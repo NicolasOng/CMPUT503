@@ -4,7 +4,7 @@
   <description>
   This package contains the code for doing odometry with wheel encoders.
   </description>
-  <maintainer email="ddikshan@ualberta.ca">Dikshant</maintainer>
+  <maintainer email="nicolas.ong@ualberta.ca">Nicolas Ong</maintainer>
   <license>None</license>
 
   <buildtool_depend>catkin</buildtool_depend>
