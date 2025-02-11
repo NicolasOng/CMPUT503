@@ -17,10 +17,11 @@ class MoveNode(DTROS):
         # add your code here
         self.vehicle_name = os.environ['VEHICLE_NAME']
         # subscriber callbacks
-        # kinematics not working????
-        self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
-        #self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
-        #self.right_encoder = rospy.Subscriber(f'/{self.vehicle_name}/right_wheel_encoder_node/tick', WheelEncoderStamped, self.right_wheel_callback)
+        # this topic only get published to with keyboard controls, not API controls.
+        # need to use wheel encoder ticks
+        #self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
+        self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
+        self.right_encoder = rospy.Subscriber(f'/{self.vehicle_name}/right_wheel_encoder_node/tick', WheelEncoderStamped, self.right_wheel_callback)
 
         # publishers
         self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
@@ -28,7 +29,6 @@ class MoveNode(DTROS):
         # LEDs
 
         # variables for kinematics/velocity
-        self.prev_time = -1
         self.xpos = 0
         self.ypos = 0
         self.theta = 0
@@ -37,92 +37,24 @@ class MoveNode(DTROS):
 
         # variables for ticks
         self.radius = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/radius', 0.0325)
-        self.w_dist = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/baseline', 0.1)
+        self.circumference = 2 * math.pi * self.radius
+        self.w_dist = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/baseline', 0.1) / 2
         self.l_res = -1
         self.r_res = -1
-        self.l_time = -1
-        self.r_time = -1
         self.l_ticks = -1
         self.r_ticks = -1
-        self.l_vrads = 0
-        self.r_vrads = 0
         pass
-        
-    def velocity_callback(self, msg):
-        # add your code here
-        # can define one or two depending on how you want to implement
-        rospy.loginfo(f'time: {msg.header.stamp}, v: {msg.v}, omega: {msg.omega}')
-        if self.prev_time == -1:
-            self.prev_time = msg.header.stamp
-            return
-        vpos = msg.v
-        vrot = msg.omega
-        cur_time = msg.header.stamp
-        dtime = cur_time - self.prev_time
-
-        dpos = vpos * dtime
-        drot = vrot * dtime
-
-        self.xpos = self.xpos + dpos * np.cos(self.theta)
-        self.ypos = self.ypos + dpos * np.sin(self.theta)
-        self.theta = self.theta + drot
-
-        self.cpos += dpos
-        self.ctheta += drot
-
-        rospy.loginfo(f"xpos: {self.xpos}, ypos: {self.ypos}, theta: {self.theta}, cpos: {self.cpos}, ctheta: {self.ctheta}")
 
     def left_wheel_callback(self, msg):
-        # add your code here
-        # can define one or two depending on how you want to implement 
-        #rospy.loginfo(f"left_wheel: {msg.data}")
-        self.l_res = msg.resolution 
-        if self.l_ticks == -1:
-            self.l_ticks = msg.data
-            self.l_time = msg.header.stamp
-            return
-        
-        cur_time = msg.header.stamp
-        cur_ticks = msg.data
+        self.l_res = msg.resolution
+        self.l_ticks = msg.data
 
-        '''
-        dtime = cur_time - self.l_time
-        dticks = cur_ticks - self.l_ticks
-        vticks = dticks / dtime.to_sec()
-        vrads = (2 * self.radius * math.pi * vticks) / self.l_res
-        '''
-
-        self.l_time = cur_time
-        self.l_ticks = cur_ticks
-        #self.l_vrads = round(vrads, 2)
-
-    def right_wheel_callback(self, msg):
-        # add your code here
-        # can define one or two depending on how you want to implement  
-        #rospy.loginfo(f"right_wheel: {msg.data}")    
+    def right_wheel_callback(self, msg):  
         self.r_res = msg.resolution 
-        if self.r_ticks == -1:
-            self.r_ticks = msg.data
-            self.r_time = msg.header.stamp
-            return
-        
-        cur_time = msg.header.stamp
-        cur_ticks = msg.data
-
-        '''
-        dtime = cur_time - self.r_time
-        dticks = cur_ticks - self.r_ticks
-        vticks = dticks / dtime.to_sec()
-        vrads = (2 * self.radius * math.pi * vticks) / self.r_res
-        '''
-
-        self.r_time = cur_time
-        self.r_ticks = cur_ticks
-        #self.r_vrads = round(vrads, 2)
+        self.r_ticks = msg.data
 
     def calculate_velocities(self):
         rate = rospy.Rate(10)
-        start_time = rospy.Time.now()
         ptime = rospy.Time.now()
         plticks = -1
         prticks = -1
@@ -133,31 +65,39 @@ class MoveNode(DTROS):
             rate.sleep()
 
         while not rospy.is_shutdown():
-            rospy.loginfo(f'left: {self.l_ticks}, right: {self.l_ticks}')
-
             cur_time = rospy.Time.now()
 
             dtime = cur_time - ptime
+            dtime = dtime.to_sec()
 
             dlticks = plticks - self.l_ticks
             drticks = prticks - self.r_ticks
 
-            vlticks = dlticks / dtime.to_sec()
-            vrticks = drticks / dtime.to_sec()
+            rospy.loginfo(f'left: {dlticks}, right: {drticks}')
 
-            vlrads = (2 * self.radius * math.pi * vlticks) / self.l_res
-            vrrads = (2 * self.radius * math.pi * vrticks) / self.r_res
+            dlrads = (dlticks / self.l_res) * (2 * math.pi)
+            drrads = (drticks / self.r_res) * (2 * math.pi)
 
-            vlrads = round(vlrads, 2)
-            vrrads = round(vrrads, 2)
+            #dlrads = round(dlrads, 2)
+            #drrads = round(drrads, 2)
 
-            vpos = (vlrads + vrrads) / 2
-            vrot = (vlrads + vrrads) / (2 * self.w_dist)
-            dtime = cur_time - start_time
-            dtime = dtime.to_sec()
+            #vlticks = dlticks / dtime
+            #vrticks = drticks / dtime
 
-            dpos = vpos * dtime
-            drot = vrot * dtime
+            #vlrads = (2 * self.radius * math.pi * vlticks) / self.l_res
+            #vrrads = (2 * self.radius * math.pi * vrticks) / self.r_res
+
+            #vlrads = round(vlrads, 2)
+            #vrrads = round(vrrads, 2)
+
+            #vpos = (vlrads + vrrads) / 2
+            #vrot = (vlrads - vrrads) / (2 * self.w_dist)
+
+            #dpos = vpos * dtime
+            #drot = vrot * dtime
+
+            dpos = (self.radius * dlrads + self.radius * drrads) / 2
+            drot = (self.radius * dlrads - self.radius * drrads) / (2 * self.w_dist)
 
             self.xpos = self.xpos + dpos * np.cos(self.theta)
             self.ypos = self.ypos + dpos * np.sin(self.theta)
@@ -165,7 +105,7 @@ class MoveNode(DTROS):
 
             self.cpos += abs(dpos)
             self.ctheta += abs(drot)
-            rospy.loginfo(f"xpos: {self.xpos}, ypos: {self.ypos}, theta: {self.theta}, cpos: {self.cpos}, ctheta: {self.ctheta}")
+            rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
 
             plticks = self.l_ticks
             prticks = self.r_ticks
@@ -257,7 +197,7 @@ if __name__ == '__main__':
     # define class MoveNode
     node = MoveNode(node_name='move_node')
     rospy.sleep(2)
-    #node.calculate_velocities()
-    node.task1()
+    node.calculate_velocities()
+    #node.task1()
     # call the function run of class MoveNode
     rospy.spin()
