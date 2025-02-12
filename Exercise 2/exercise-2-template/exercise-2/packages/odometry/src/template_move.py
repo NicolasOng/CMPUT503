@@ -5,6 +5,7 @@ import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from duckietown_msgs.msg import WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
+from std_msgs.msg import ColorRGBA
 import math
 import time
 import numpy as np
@@ -169,6 +170,9 @@ class MoveNode(DTROS):
 
     def command_leds(self):
         command = LEDPattern()
+        msg_rgba = ColorRGBA(r=255, g=0, b=255, a=255)
+        command.rgb_vals = [msg_rgba] * 5
+        self.led_command.publish(command)
         pass
 
     def command_wheel(self, ldirection, lthrottle, rdirection, rthrottle):
@@ -200,6 +204,10 @@ class MoveNode(DTROS):
         self.drive_arc(2, 0.75, 0.6)
         self.pause(0.5)
         vthread.join()
+
+    def led_test(self):
+        while not rospy.is_shutdown():
+            self.command_leds()
     
     def run(self):
         rospy.sleep(2)  # wait for the node to initialize
@@ -216,8 +224,9 @@ if __name__ == '__main__':
     node = MoveNode(node_name='move_node')
     rospy.sleep(2)
     #node.calculate_velocities()
-    node.task1()
-    node.task2()
+    #node.task1()
+    #node.task2()
     #node.arc_test()
+    node.led_test()
     # call the function run of class MoveNode
     rospy.spin()
