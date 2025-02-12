@@ -4,7 +4,7 @@
 import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from duckietown_msgs.msg import WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped
+from duckietown_msgs.msg import WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
 import math
 import time
 import numpy as np
@@ -17,7 +17,7 @@ class MoveNode(DTROS):
         # add your code here
         self.vehicle_name = os.environ['VEHICLE_NAME']
         # subscriber callbacks
-        # this topic only get published to with keyboard controls, not API controls.
+        # /kinematics_node/velocity only get published to with keyboard controls, not API controls.
         # need to use wheel encoder ticks
         #self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
         self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
@@ -25,6 +25,7 @@ class MoveNode(DTROS):
 
         # publishers
         self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
+        self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
 
         # LEDs
 
@@ -43,6 +44,10 @@ class MoveNode(DTROS):
         self.r_res = -1
         self.l_ticks = -1
         self.r_ticks = -1
+
+        # corrective value
+        self.rot_correction = 1.2
+        self.pos_correction = 1.5
         pass
 
     def left_wheel_callback(self, msg):
@@ -54,10 +59,11 @@ class MoveNode(DTROS):
         self.r_ticks = msg.data
 
     def calculate_velocities(self):
-        rate = rospy.Rate(10)
+        rate = rospy.Rate(5)
         ptime = rospy.Time.now()
         plticks = -1
         prticks = -1
+
         while plticks == -1 or prticks == -1:
             plticks = self.l_ticks
             prticks = self.r_ticks
@@ -78,26 +84,11 @@ class MoveNode(DTROS):
             dlrads = (dlticks / self.l_res) * (2 * math.pi)
             drrads = (drticks / self.r_res) * (2 * math.pi)
 
-            #dlrads = round(dlrads, 2)
-            #drrads = round(drrads, 2)
-
-            #vlticks = dlticks / dtime
-            #vrticks = drticks / dtime
-
-            #vlrads = (2 * self.radius * math.pi * vlticks) / self.l_res
-            #vrrads = (2 * self.radius * math.pi * vrticks) / self.r_res
-
-            #vlrads = round(vlrads, 2)
-            #vrrads = round(vrrads, 2)
-
-            #vpos = (vlrads + vrrads) / 2
-            #vrot = (vlrads - vrrads) / (2 * self.w_dist)
-
-            #dpos = vpos * dtime
-            #drot = vrot * dtime
-
             dpos = (self.radius * dlrads + self.radius * drrads) / 2
             drot = (self.radius * dlrads - self.radius * drrads) / (2 * self.w_dist)
+
+            drot = drot * self.rot_correction
+            dpos = dpos * self.pos_correction
 
             self.xpos = self.xpos + dpos * np.cos(self.theta)
             self.ypos = self.ypos + dpos * np.sin(self.theta)
@@ -111,10 +102,6 @@ class MoveNode(DTROS):
             prticks = self.r_ticks
             ptime = cur_time
             rate.sleep()
-        
-    def compute_distance_traveled(self, msg):
-        # add your code here
-        pass
     
     def drive_straight(self, meters, speed):
         '''
@@ -132,6 +119,7 @@ class MoveNode(DTROS):
             if cur_meters >= meters:
                 break
             rate.sleep()
+        self.command_wheel(0, 0, 0, 0)
     
     def rotate(self, radians, speed):
         '''
@@ -147,6 +135,24 @@ class MoveNode(DTROS):
             if cur_radians >= radians:
                 break
             rate.sleep()
+        self.command_wheel(0, 0, 0, 0)
+        
+    def drive_arc(self, distance, arc, speed):
+        '''
+        arc in [-1, 1], where -1 is full left turn, 1 is full right turn
+        0 is straight
+        distance should be positive
+        '''
+        left_speed = speed * (1 + arc) / 2
+        right_speed = speed * (1 - arc) / 2
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.command_wheel(1, left_speed, 1, right_speed)
+            cur_meters = self.cpos
+            if cur_meters >= distance:
+                break
+            rate.sleep()
+        self.command_wheel(0, 0, 0, 0)
 
     def pause(self, seconds):
         '''
@@ -161,8 +167,8 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
 
-    def use_leds(self, **kwargs):
-        # add your code here
+    def command_leds(self):
+        command = LEDPattern()
         pass
 
     def command_wheel(self, ldirection, lthrottle, rdirection, rthrottle):
@@ -171,17 +177,29 @@ class MoveNode(DTROS):
 
     # define other functions if needed
     def task1(self):
-        #vthread = threading.Thread(target=self.calculate_velocities)
-        #vthread.start()
+        vthread = threading.Thread(target=self.calculate_velocities)
+        vthread.start()
         self.drive_straight(1.25, 0.4)
         self.pause(0.5)
         self.drive_straight(1.25, -0.4)
-        #vthread.join()
+        self.pause(0.5)
+        vthread.join()
     
     def task2(self):
+        vthread = threading.Thread(target=self.calculate_velocities)
+        vthread.start()
         self.rotate(math.pi/2, 0.4)
         self.pause(0.5)
-        self.rotate(-math.pi/2, -0.4)
+        self.rotate(math.pi/2, -0.4)
+        self.pause(0.5)
+        vthread.join()
+    
+    def arc_test(self):
+        vthread = threading.Thread(target=self.calculate_velocities)
+        vthread.start()
+        self.drive_arc(2, 0.75, 0.6)
+        self.pause(0.5)
+        vthread.join()
     
     def run(self):
         rospy.sleep(2)  # wait for the node to initialize
@@ -197,7 +215,9 @@ if __name__ == '__main__':
     # define class MoveNode
     node = MoveNode(node_name='move_node')
     rospy.sleep(2)
-    node.calculate_velocities()
-    #node.task1()
+    #node.calculate_velocities()
+    node.task1()
+    node.task2()
+    #node.arc_test()
     # call the function run of class MoveNode
     rospy.spin()
