@@ -47,7 +47,7 @@ class MoveNode(DTROS):
         self.r_ticks = -1
 
         # corrective value
-        self.rot_correction = 1.2
+        self.rot_correction = 1.75
         self.pos_correction = 1.5
         pass
 
@@ -143,13 +143,16 @@ class MoveNode(DTROS):
         arc in [-1, 1], where -1 is full left turn, 1 is full right turn
         0 is straight
         distance should be positive
+        speed should be in [-1, 1]
         '''
-        left_speed = speed * (1 + arc) / 2
-        right_speed = speed * (1 - arc) / 2
+        starting_cpos = self.cpos
+        left_speed = speed * (1 + arc)
+        right_speed = speed * (1 - arc)
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
+            rospy.loginfo("arc")
             self.command_wheel(1, left_speed, 1, right_speed)
-            cur_meters = self.cpos
+            cur_meters = self.cpos - starting_cpos
             if cur_meters >= distance:
                 break
             rate.sleep()
@@ -168,46 +171,91 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
 
-    def command_leds(self):
+    def command_leds_all(self):
+        '''
+        Header header
+        string[]  color_list
+        std_msgs/ColorRGBA[]  rgb_vals
+        int8[]    color_mask
+        float32   frequency
+        int8[]    frequency_mask
+        LEDs:
+        - 0: front, port side
+        - 1: back, fan side
+        - 2: ???
+        - 3: back, port side
+        - 4: front, fan side
+        '''
         command = LEDPattern()
-        msg_rgba = ColorRGBA(r=255, g=0, b=255, a=255)
-        command.rgb_vals = [msg_rgba] * 5
+        purple = ColorRGBA(r=255, g=0, b=255, a=255)
+        red = ColorRGBA(r=255, g=0, b=0, a=255)
+        green = ColorRGBA(r=0, g=255, b=0, a=255)
+        blue = ColorRGBA(r=0, g=0, b=255, a=255)
+        cyan = ColorRGBA(r=0, g=255, b=255, a=255)
+        command.rgb_vals = [purple, purple, green, purple, purple]
         self.led_command.publish(command)
-        pass
+
+    def command_leds_color(self, color=ColorRGBA(r=255, g=255, b=255, a=255)):
+        command = LEDPattern()
+        command.rgb_vals = [color] * 5
+        self.led_command.publish(command)
+    
+    def command_leds_default(self):
+        command = LEDPattern()
+        white = ColorRGBA(r=255, g=255, b=255, a=255)
+        red = ColorRGBA(r=255, g=0, b=0, a=255)
+        command.rgb_vals = [white, red, white, red, white]
+        self.led_command.publish(command)
 
     def command_wheel(self, ldirection, lthrottle, rdirection, rthrottle):
         command = WheelsCmdStamped(vel_left=ldirection*lthrottle, vel_right=rdirection*rthrottle)
         self.wheel_command.publish(command)
 
     # define other functions if needed
-    def task1(self):
-        vthread = threading.Thread(target=self.calculate_velocities)
-        vthread.start()
+    def straight_line_task(self):
         self.drive_straight(1.25, 0.4)
         self.pause(0.5)
         self.drive_straight(1.25, -0.4)
         self.pause(0.5)
-        vthread.join()
     
-    def task2(self):
-        vthread = threading.Thread(target=self.calculate_velocities)
-        vthread.start()
+    def rotation_task(self):
         self.rotate(math.pi/2, 0.4)
         self.pause(0.5)
         self.rotate(math.pi/2, -0.4)
         self.pause(0.5)
-        vthread.join()
     
     def arc_test(self):
-        vthread = threading.Thread(target=self.calculate_velocities)
-        vthread.start()
-        self.drive_arc(2, 0.75, 0.6)
+        self.drive_arc(2, 0.20, 0.5)
         self.pause(0.5)
-        vthread.join()
+
+    def d_task(self):
+        pt = 2
+        sp = 0.75
+        self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
+        self.pause(5)
+        self.command_leds_color(ColorRGBA(r=0, g=255, b=0, a=255))
+        self.drive_straight(1.2, sp)
+        self.pause(pt)
+        self.rotate(math.pi/2, 0.3)
+        self.pause(pt)
+        self.drive_straight(0.8, 0.5)
+        self.pause(pt)
+        self.drive_arc(2, 0.225, 0.5)
+        self.pause(pt)
+        #'''
+        self.rotate(math.pi*0, 0.3)
+        self.pause(pt)
+        self.drive_straight(0.92, sp)
+        self.pause(pt)
+        self.rotate(math.pi/2, 0.3)
+        self.pause(pt)
+        self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
+        self.pause(5)
+        #'''
 
     def led_test(self):
         while not rospy.is_shutdown():
-            self.command_leds()
+            self.command_leds_all()
     
     def run(self):
         rospy.sleep(2)  # wait for the node to initialize
@@ -218,15 +266,16 @@ class MoveNode(DTROS):
 
     def on_shutdown(self):
         self.wheel_command.publish(WheelsCmdStamped(vel_left=0, vel_right=0))
+        self.command_leds_default()
 
 if __name__ == '__main__':
     # define class MoveNode
     node = MoveNode(node_name='move_node')
     rospy.sleep(2)
     #node.calculate_velocities()
-    #node.task1()
-    #node.task2()
-    #node.arc_test()
-    node.led_test()
+    vthread = threading.Thread(target=node.calculate_velocities)
+    vthread.start()
+    node.d_task()
+    vthread.join()
     # call the function run of class MoveNode
     rospy.spin()
