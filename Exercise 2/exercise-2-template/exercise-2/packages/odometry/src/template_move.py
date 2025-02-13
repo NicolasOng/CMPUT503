@@ -279,7 +279,23 @@ class MoveNode(DTROS):
         # stop led signal + pause 2
         self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
         self.pause(5)
+    
+    def reverse_park_task(self):
+        self.drive_straight(0.5, 0.5)
+        self.pause(1)
+        self.rotate(math.pi/2, -0.3)
+        self.pause(1)
+        self.drive_straight(0.3, -0.9)
+    
+    def eight_shape(self):
+        self.drive_arc(0.8, 0.8, 0.4)
 
+        self.pause(1)
+        self.drive_straight(0.01, 0.4)
+        self.pause(1)
+
+        self.drive_arc(0.8, -0.7, 0.4)
+    
     def on_shutdown(self):
         # on shutdown,
         # stop the wheels
