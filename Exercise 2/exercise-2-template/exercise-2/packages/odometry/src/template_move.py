@@ -16,7 +16,6 @@ import threading
 class MoveNode(DTROS):
     def __init__(self, node_name):
         super(MoveNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
-        # add your code here
         self.vehicle_name = os.environ['VEHICLE_NAME']
         # subscriber callbacks
         # /kinematics_node/velocity only get published to with keyboard controls, not API controls.
@@ -29,8 +28,6 @@ class MoveNode(DTROS):
         self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
         self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise2/odometry', String, queue_size=10)
-
-        # LEDs
 
         # variables for kinematics/velocity
         self.xpos = 0
@@ -48,10 +45,9 @@ class MoveNode(DTROS):
         self.l_ticks = -1
         self.r_ticks = -1
 
-        # corrective value
+        # corrective values
         self.rot_correction = 1.75
         self.pos_correction = 1.5
-        pass
 
     def left_wheel_callback(self, msg):
         self.l_res = msg.resolution
@@ -185,8 +181,10 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
 
-    def command_leds_all(self):
+    def command_leds_test(self):
         '''
+        sets the leds to the set colors below
+        this method mostly used to test LED functionality
         Header header
         string[]  color_list
         std_msgs/ColorRGBA[]  rgb_vals
@@ -210,11 +208,17 @@ class MoveNode(DTROS):
         self.led_command.publish(command)
 
     def command_leds_color(self, color=ColorRGBA(r=255, g=255, b=255, a=255)):
+        '''
+        sets all the leds to the given color
+        '''
         command = LEDPattern()
         command.rgb_vals = [color] * 5
         self.led_command.publish(command)
     
     def command_leds_default(self):
+        '''
+        set the leds back to default colors
+        '''
         command = LEDPattern()
         white = ColorRGBA(r=255, g=255, b=255, a=255)
         red = ColorRGBA(r=255, g=0, b=0, a=255)
@@ -222,6 +226,9 @@ class MoveNode(DTROS):
         self.led_command.publish(command)
 
     def command_wheel(self, ldirection, lthrottle, rdirection, rthrottle):
+        '''
+        sets the wheel velocities
+        '''
         command = WheelsCmdStamped(vel_left=ldirection*lthrottle, vel_right=rdirection*rthrottle)
         self.wheel_command.publish(command)
 
@@ -236,10 +243,6 @@ class MoveNode(DTROS):
         self.rotate(math.pi/2, 0.4)
         self.pause(0.5)
         self.rotate(math.pi/2, -0.4)
-        self.pause(0.5)
-    
-    def arc_test(self):
-        self.drive_arc(2, 0.20, 0.5)
         self.pause(0.5)
 
     def d_task(self):
@@ -277,29 +280,23 @@ class MoveNode(DTROS):
         self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
         self.pause(5)
 
-    def led_test(self):
-        while not rospy.is_shutdown():
-            self.command_leds_all()
-    
-    def run(self):
-        rospy.sleep(2)  # wait for the node to initialize
-
-        # add your code here
-        # call the functions you have defined above for executing the movements
-        pass
-
     def on_shutdown(self):
+        # on shutdown,
+        # stop the wheels
         self.wheel_command.publish(WheelsCmdStamped(vel_left=0, vel_right=0))
+        # reset the leds
         self.command_leds_default()
 
 if __name__ == '__main__':
-    # define class MoveNode
+    # create node
     node = MoveNode(node_name='move_node')
+    # wait for it to initialize
     rospy.sleep(2)
-    #node.calculate_velocities()
+    # start the thread that calculates odometry
     vthread = threading.Thread(target=node.calculate_velocities)
     vthread.start()
+    # start the d task
     node.d_task()
+    # join the odometry thread (thread ends on shutdown)
     vthread.join()
-    # call the function run of class MoveNode
     rospy.spin()
