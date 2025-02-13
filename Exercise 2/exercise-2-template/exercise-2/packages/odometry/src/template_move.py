@@ -244,29 +244,38 @@ class MoveNode(DTROS):
 
     def d_task(self):
         pt = 2
-        sp = 0.75
-        #self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
-        #self.pause(5)
-        self.command_leds_color(ColorRGBA(r=0, g=255, b=0, a=255))
-        #self.drive_straight(1.2, sp)
-        self.drive_straight(2, sp)
-        '''
-        self.pause(pt)
-        self.rotate(math.pi/2, 0.3)
-        self.pause(pt)
-        self.drive_straight(0.8, 0.5)
-        self.pause(pt)
-        self.drive_arc(2, 0.225, 0.5)
-        self.pause(pt)
-        self.rotate(math.pi*0, 0.3)
-        self.pause(pt)
-        self.drive_straight(0.92, sp)
-        self.pause(pt)
-        self.rotate(math.pi/2, 0.3)
-        self.pause(pt)
+        # stop led signal + pause
         self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
         self.pause(5)
-        '''
+        # start led signal
+        self.command_leds_color(ColorRGBA(r=0, g=255, b=0, a=255))
+        # long straight
+        self.drive_arc(1.1, 0.05, 0.4)
+        self.pause(pt)
+        # first corner
+        self.rotate(math.pi/2, 0.3)
+        self.pause(pt)
+        # first short straight
+        self.drive_arc(0.75, 0.1, 0.4)
+        self.pause(pt)
+        # first arc
+        self.drive_arc(0.6, 0.4, 0.5)
+        self.pause(pt)
+        # second short straight
+        self.drive_arc(0.4, 0.1, 0.4)
+        self.pause(pt)
+        # second arc
+        self.drive_arc(0.62, 0.4, 0.5)
+        self.pause(pt)
+        # second short straight
+        self.drive_arc(0.6, 0.075, 0.4)
+        self.pause(pt)
+        # second corner
+        self.rotate(math.pi/2, 0.3)
+        self.pause(pt)
+        # stop led signal + pause 2
+        self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
+        self.pause(5)
 
     def led_test(self):
         while not rospy.is_shutdown():

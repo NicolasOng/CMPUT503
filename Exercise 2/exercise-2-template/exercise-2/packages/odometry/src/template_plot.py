@@ -26,6 +26,7 @@ def read_bagfile(bf, topic):
     # convert to dataframe
     df_topic = pd.read_csv(topic_bag)
     # print df
+    print(len(df_topic))
     print(df_topic.columns.tolist())
     print(df_topic.head())
     return df_topic
@@ -192,7 +193,7 @@ def plot(df, col):
     # Show plot
     plt.show()
 if __name__ == '__main__':
-    bf = bagreader('2025-02-13straighttest4.bag')
+    bf = bagreader('2025-02-13gooddupsidedown.bag')
 
     #df_left = read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick')
     #df_right = read_bagfile(bf, '/csc22946/right_wheel_encoder_node/tick')
