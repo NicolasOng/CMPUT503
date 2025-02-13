@@ -5,10 +5,11 @@ import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from duckietown_msgs.msg import WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
-from std_msgs.msg import ColorRGBA
+from std_msgs.msg import ColorRGBA, String
 import math
 import time
 import numpy as np
+import json
 
 import threading
 
@@ -27,6 +28,7 @@ class MoveNode(DTROS):
         # publishers
         self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
+        self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise2/odometry', String, queue_size=10)
 
         # LEDs
 
@@ -98,6 +100,18 @@ class MoveNode(DTROS):
             self.cpos += abs(dpos)
             self.ctheta += abs(drot)
             rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
+            
+            odometry_data = {
+                "time": cur_time.to_sec(),
+                "interval": dtime,
+                "xpos": self.xpos,
+                "ypos": self.ypos,
+                "theta": self.theta,
+                "cpos": self.cpos,
+                "ctheta": self.ctheta
+            }
+            json_odometry = json.dumps(odometry_data)
+            self.odometry_topic.publish(json_odometry)
 
             plticks = self.l_ticks
             prticks = self.r_ticks
@@ -231,10 +245,12 @@ class MoveNode(DTROS):
     def d_task(self):
         pt = 2
         sp = 0.75
-        self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
-        self.pause(5)
+        #self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
+        #self.pause(5)
         self.command_leds_color(ColorRGBA(r=0, g=255, b=0, a=255))
-        self.drive_straight(1.2, sp)
+        #self.drive_straight(1.2, sp)
+        self.drive_straight(2, sp)
+        '''
         self.pause(pt)
         self.rotate(math.pi/2, 0.3)
         self.pause(pt)
@@ -242,7 +258,6 @@ class MoveNode(DTROS):
         self.pause(pt)
         self.drive_arc(2, 0.225, 0.5)
         self.pause(pt)
-        #'''
         self.rotate(math.pi*0, 0.3)
         self.pause(pt)
         self.drive_straight(0.92, sp)
@@ -251,7 +266,7 @@ class MoveNode(DTROS):
         self.pause(pt)
         self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
         self.pause(5)
-        #'''
+        '''
 
     def led_test(self):
         while not rospy.is_shutdown():
