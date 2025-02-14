@@ -124,8 +124,20 @@ def convert_odometry_df(df):
     # should have columns time, interval, xpos, ypos, theta, cpos, ctheta
     df_expanded = df["data"].apply(json.loads).apply(pd.Series)
     # rename columns for plotting
-    df_expanded.rename(columns={'xpos': 'xipos', 'ypos': 'yipos'}, inplace=True)
+    df_expanded['xipos'] = df_expanded['xpos']
+    df_expanded['yipos'] = df_expanded['ypos']
+    df_expanded['Time'] = df_expanded['time']
     return df_expanded
+
+def positions_to_positional_velocity(df, theta_fix=0):
+    '''
+    given a dataframe with x and y positions over time,
+    calculates the 'dpos' - change in distance between each row.
+    also dtheta
+    '''
+    df['dpos'] = np.sqrt(np.diff(df['xpos'], prepend=np.nan)**2 + np.diff(df['ypos'], prepend=np.nan)**2)
+    df['drot'] = np.diff(df['theta'], prepend=np.nan) * theta_fix
+    df.fillna(0, inplace=True)
 
 def for_ticks(df_left, df_right):
     # first do pos/rot in robot frame (ie relative to starting position)
@@ -156,6 +168,18 @@ def for_velocity(df_velocity):
     plot(df_bot, 'dpos')
     plot(df_bot, 'drot')
     plot(df_bot, 'rrot')
+
+def for_odometry(df_odometry):
+    df_odometry = convert_odometry_df(df_odometry)
+
+    positions_to_positional_velocity(df_odometry, 7.75) # 10.72, 7.75
+    positional_velocity_to_position(df_odometry)
+    robot_to_arbitrary_frame(df_odometry, -math.pi/2, 0, 0)
+
+    plot_trajectory(df_odometry)
+    #plot(df_odometry, 'ctheta')
+    #plot(df_odometry, 'cpos')
+
 
 def plot_trajectory(df_bot, connect=True):
     # add your code here
@@ -193,15 +217,11 @@ def plot(df, col):
     # Show plot
     plt.show()
 if __name__ == '__main__':
-    bf = bagreader('2025-02-13gooddupsidedown.bag')
+    bf = bagreader('2025-02-13goodrun.bag')
 
     #df_left = read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick')
     #df_right = read_bagfile(bf, '/csc22946/right_wheel_encoder_node/tick')
     #df_velocity = read_bagfile(bf, '/csc22946/kinematics_node/velocity')
     df_odometry = read_bagfile(bf, '/csc22946/exercise2/odometry')
 
-    df_odometry = convert_odometry_df(df_odometry)
-
-    plot_trajectory(df_odometry)
-
-
+    for_odometry(df_odometry)
