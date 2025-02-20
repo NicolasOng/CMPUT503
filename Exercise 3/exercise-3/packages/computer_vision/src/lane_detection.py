@@ -50,8 +50,12 @@ class LaneDetectionNode(DTROS):
         # optimal camera matrix lets us see entire camera image (image edges cropped without), but some distortion visible
         newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.cam_matrix, self.dist_coeff, (w,h), 0, (w,h))
 
+
         # undistorted image using calibration parameters
         undistorted_cv2img = cv2.undistort(cv2_img, self.cam_matrix, self.dist_coeff, None)
+
+        # 
+        undistorted_cv2img = cv2.cvtColor(undistorted_cv2img, cv2.COLOR_BGR2RGB)
         return undistorted_cv2img
 
     def preprocess_image(self, **kwargs):
