@@ -33,9 +33,17 @@ class LaneDetectionNode(DTROS):
         self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
         
         # color detection parameters in HSV format
-        
-        # initialize bridge and subscribe to camera feed
+        self.red_lower = np.array([136, 87, 111], np.uint8) 
+        self.red_upper = np.array([180, 255, 255], np.uint8) 
 
+        self.green_lower = np.array([25, 52, 72], np.uint8) 
+        self.green_upper = np.array([102, 255, 255], np.uint8) 
+
+        self.blue_lower = np.array([94, 80, 2], np.uint8) 
+        self.blue_upper = np.array([120, 255, 255], np.uint8) 
+        # initialize bridge and subscribe to camera feed
+        self._window = "camera-reader"
+        cv2.namedWindow(self._window, cv2.WINDOW_AUTOSIZE)
         # lane detection publishers
 
         # LED
@@ -54,17 +62,68 @@ class LaneDetectionNode(DTROS):
         # undistorted image using calibration parameters
         undistorted_cv2img = cv2.undistort(cv2_img, self.cam_matrix, self.dist_coeff, None)
 
-        # 
-        undistorted_cv2img = cv2.cvtColor(undistorted_cv2img, cv2.COLOR_BGR2RGB)
+        #undistorted_cv2img = cv2.cvtColor(undistorted_cv2img, cv2.COLOR_BGR2RGB)
         return undistorted_cv2img
 
     def preprocess_image(self, **kwargs):
         # add your code here
         pass
     
-    def detect_lane_color(self, **kwargs):
+    
+    def draw_contour(self):
+
+        return
+
+
+    """
+    Following
+    
+    
+    """
+    def detect_lane_color(self, cv2_img):
         # add your code here
-        pass
+        # color space 
+        hsvFrame = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2HSV) 
+        red_mask = cv2.inRange(hsvFrame, self.red_lower, self.red_upper)
+        green_mask = cv2.inRange(hsvFrame, self.green_lower, self.green_upper) 
+        blue_mask = cv2.inRange(hsvFrame, self.blue_lower, self.blue_upper) 
+        blue_mask = cv2.inRange(hsvFrame, self.blue_lower, self.blue_upper) 
+
+        kernel = np.ones((5, 5), "uint8") 
+
+        # For red color 
+        red_mask = cv2.dilate(red_mask, kernel) 
+        res_red = cv2.bitwise_and(cv2_img, cv2_img, 
+                                mask = red_mask) 
+        
+        # For green color 
+        green_mask = cv2.dilate(green_mask, kernel) 
+        res_green = cv2.bitwise_and(cv2_img, cv2_img, 
+                                    mask = green_mask) 
+        
+        # For blue color 
+        blue_mask = cv2.dilate(blue_mask, kernel) 
+        res_blue = cv2.bitwise_and(cv2_img, cv2_img, 
+                                mask = blue_mask) 
+
+        # Creating contour to track red color 
+        contours, hierarchy = cv2.findContours(red_mask, 
+                                            cv2.RETR_TREE, 
+                                            cv2.CHAIN_APPROX_SIMPLE) 
+        print(f'contours {contours}') 
+        for pic, contour in enumerate(contours): 
+            area = cv2.contourArea(contour) 
+            if(area > 300): 
+                x, y, w, h = cv2.boundingRect(contour) 
+                cv2_img = cv2.rectangle(cv2_img, (x, y), 
+                                        (x + w, y + h), 
+                                        (0, 0, 255), 2) 
+                
+                cv2.putText(cv2_img, "Red Colour", (x, y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
+                            (0, 0, 255))     
+
+        return cv2_img
     
     def detect_lane(self, **kwargs):
         # add your code here
@@ -80,7 +139,14 @@ class LaneDetectionNode(DTROS):
         # undistort image
         undistort_cv2_img = self.undistort_image(cv2_image)
         # preprocess image
+        undistort_cv2_img = self.detect_lane_color(undistort_cv2_img)
 
+
+
+
+        # display frame
+        cv2.imshow(self._window, undistort_cv2_img)
+        cv2.waitKey(1)
         # detect lanes - 2.1 
         
         # publish lane detection results
@@ -88,6 +154,7 @@ class LaneDetectionNode(DTROS):
         # detect lanes and colors - 1.3
         
         # publish undistorted image
+        undistort_cv2_img = cv2.cvtColor(undistort_cv2_img, cv2.COLOR_BGR2RGB)
         msg_undistorted = self._bridge.cv2_to_imgmsg(undistort_cv2_img, encoding="rgb8")
         self.undistorted_pub.publish(msg_undistorted)
         
