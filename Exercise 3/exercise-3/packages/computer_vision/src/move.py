@@ -207,6 +207,8 @@ class MoveNode(DTROS):
         - 2: ???
         - 3: back, port side
         - 4: front, fan side
+        Some Duckiebots have 5 LEDs, ours has 4, so one does nothing.
+        Frequency doesn't seem to work with our bot.
         '''
         command = LEDPattern()
         purple = ColorRGBA(r=255, g=0, b=255, a=255)
@@ -215,7 +217,7 @@ class MoveNode(DTROS):
         blue = ColorRGBA(r=0, g=0, b=255, a=255)
         cyan = ColorRGBA(r=0, g=255, b=255, a=255)
         command.rgb_vals = [purple, purple, green, purple, purple]
-        command.frequency = 0.1
+        command.frequency = 10.0
         self.led_command.publish(command)
 
     def command_leds_color(self, color=ColorRGBA(r=255, g=255, b=255, a=255)):
@@ -239,6 +241,8 @@ class MoveNode(DTROS):
     def set_velocities(self, linear, rotational):
         '''
         sets the linear/rotational velocities of the Duckiebot
+        linear = m/s
+        rotational = radians/s
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
 
@@ -304,6 +308,13 @@ class MoveNode(DTROS):
         self.pause(1)
 
         self.drive_arc(0.8, -0.7, 0.4)
+
+    def random_task(self):
+        self.drive_straight(10, 0.5)
+        #self.pause(1)
+        #self.rotate(math.pi/2, -math.pi*3)
+        #self.pause(1)
+        #self.drive_straight(1, 0.5)
     
     def on_shutdown(self):
         # on shutdown,
@@ -315,11 +326,13 @@ class MoveNode(DTROS):
 if __name__ == '__main__':
     # create node
     node = MoveNode(node_name='move_node')
+    # wait for it to initialize
+    rospy.sleep(2)
     # start the thread that calculates odometry
     vthread = threading.Thread(target=node.calculate_velocities)
     vthread.start()
     # start the selected task
-    node.command_leds_test()
+    node.random_task()
     # join the odometry thread (thread ends on shutdown)
     vthread.join()
     rospy.spin()

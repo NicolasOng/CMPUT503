@@ -98,6 +98,18 @@ def for_odometry(df_odometry):
     #plot(df_odometry, 'ctheta')
     #plot(df_odometry, 'cpos')
 
+def for_velocity(df_velocity):
+    #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'v', 'omega']
+    pass
+
+def for_ticks(df_ticks):
+    # ['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'data', 'resolution', 'type']
+    pass
+
+def for_wheels_cmd_executed(df_wce):
+    #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'vel_left', 'vel_right']
+    pass
+
 # Plotting functions
 
 def plot_trajectory(df_bot, color="vpos", arrows=True, arrow_size=0.01):
@@ -144,8 +156,12 @@ def plot(df, col):
     plt.show()
 
 if __name__ == '__main__':
-    bf = bagreader('bags/2025-02-13goodrun.bag')
+    bf = bagreader('bags/2025-02-20comparison.bag')
 
-    df_odometry = read_bagfile(bf, '/csc22946/exercise2/odometry')
-
+    df_odometry = read_bagfile(bf, '/csc22946/exercise3/odometry') # works
     for_odometry(df_odometry)
+
+    #df_pose = read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose')
+    #df_pose = read_bagfile(bf, '/csc22946/kinematics_node/velocity') # works
+    #df_pose = read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick') # works
+    #df_pose = read_bagfile(bf, '/csc22946/wheels_driver_node/wheels_cmd_executed') #works
