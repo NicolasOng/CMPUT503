@@ -15,6 +15,7 @@ class CameraReaderNode(DTROS):
         # initialize the DTROS parent class
         super(CameraReaderNode, self).__init__(node_name=node_name, node_type=NodeType.VISUALIZATION)
         # static parameters
+        
         self._vehicle_name = os.environ['VEHICLE_NAME']
         self._camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
         # bridge between OpenCV and ROS
@@ -25,7 +26,9 @@ class CameraReaderNode(DTROS):
         # construct subscriber
         self.sub = rospy.Subscriber(self._camera_topic, CompressedImage, self.callback)
         # publisher
-        self.undistorted_topic = rospy.Publisher("/undistorted", Image, queue_size=10)
+        self.undistorted_topic = rospy.Publisher(f"{self._vehicle_name}/undistorted", Image, queue_size=10)
+        self.blur_topic = rospy.Publisher(f"{self._vehicle_name}/blur", Image, queue_size=10)
+        self.resize_topic = rospy.Publisher(f"{self._vehicle_name}/resize", Image, queue_size=10)
 
     def callback(self, msg):
         # ******HAVE TO PUBLISH THE IMAGE GENERATED BELOW TO A TOPIC, VIEW IT WITH rqt_image_view
@@ -44,6 +47,12 @@ class CameraReaderNode(DTROS):
         # undistorted image using calibration parameters
         new_image = cv2.undistort(image, cam_matrix, dist_coeff, None)
         
+        # blur
+        blur_image = self.blur_image(new_image, kernel_size=5)
+
+        # Resize the image
+        resized_image = self.resize_image(blur_image, width=w //2, height=w//2)
+
         # display frame
         cv2.imshow(self._window, new_image)
         cv2.waitKey(1)
@@ -52,6 +61,20 @@ class CameraReaderNode(DTROS):
         msg_undistorted = self._bridge.cv2_to_imgmsg(new_image, encoding="rgb8")
         self.undistorted_topic.publish(msg_undistorted)
 
+        # publish blur_img
+        msg_undistorted_blur = self._bridge.cv2_to_imgmsg(blur_image, encoding="rgb8")
+        self.blur_topic.publish(msg_undistorted_blur)
+
+        # publish to resize
+        msg_undistorted_blur_resize = self._bridge.cv2_to_imgmsg(resized_image, encoding="rgb8")
+        self.resize_topic.publish(msg_undistorted_blur_resize)
+
+    def blur_image(self, img, kernel_size):
+        kernel = np.ones((kernel_size,kernel_size),np.float32)/25
+        return cv2.blur(img,(kernel_size,kernel_size))
+
+    def resize_image(self, img, width, height):
+        return cv2.resize(img, (width, height))
 if __name__ == '__main__':
     # create the node
     node = CameraReaderNode(node_name='camera_reader_node')
