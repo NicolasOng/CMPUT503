@@ -4,7 +4,7 @@ import numpy as np
 import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Image
 
 import cv2
 from cv_bridge import CvBridge
@@ -24,6 +24,8 @@ class CameraReaderNode(DTROS):
         cv2.namedWindow(self._window, cv2.WINDOW_AUTOSIZE)
         # construct subscriber
         self.sub = rospy.Subscriber(self._camera_topic, CompressedImage, self.callback)
+        # publisher
+        self.undistorted_topic = rospy.Publisher("/undistorted", Image, queue_size=10)
 
     def callback(self, msg):
         # ******HAVE TO PUBLISH THE IMAGE GENERATED BELOW TO A TOPIC, VIEW IT WITH rqt_image_view
@@ -45,6 +47,10 @@ class CameraReaderNode(DTROS):
         # display frame
         cv2.imshow(self._window, new_image)
         cv2.waitKey(1)
+
+        #publish
+        msg_undistorted = self._bridge.cv2_to_imgmsg(new_image, encoding="rgb8")
+        self.undistorted_topic.publish(msg_undistorted)
 
 if __name__ == '__main__':
     # create the node
