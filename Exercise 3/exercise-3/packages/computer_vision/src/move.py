@@ -17,20 +17,32 @@ class MoveNode(DTROS):
     def __init__(self, node_name):
         super(MoveNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
-        # Subscriber Callbacks
+
+        # Subscribers
         # gets the pose from the velocity -> based on kinematics_node/velocity
-        self.pose = rospy.Subscriber(f'/{self.vehicle_name}/velocity_to_pose_node/pose', Pose2DStamped, self.pose_callback)
+        #self.pose = rospy.Subscriber(f'/{self.vehicle_name}/velocity_to_pose_node/pose', Pose2DStamped, self.pose_callback)
         # gets the linear/angular velocity from the wheel speeds -> based on car_cmd_switch_node/cmd
-        self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
+        # note: this seems to be based on commands, not actual wheel speeds.
+        #self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
+        # gets the executed wheel speeds -> based on car_cmd_switch_node/cmd
+        #self.wheels_cmd_executed = rospy.Subscriber(f'/{self.vehicle_name}/wheels_driver_node/wheels_cmd_executed', Twist2DStamped, self.velocity_callback)
+        # gets the current amount of wheel ticks that have passed, probably based on wheel sensors
         self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
         self.right_encoder = rospy.Subscriber(f'/{self.vehicle_name}/right_wheel_encoder_node/tick', WheelEncoderStamped, self.right_wheel_callback)
 
-        # publishers
-        self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
+        # Publishers
+        self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
+        #self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
-        self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise2/odometry', String, queue_size=10)
+        self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise3/odometry', String, queue_size=10)
 
-        # variables for kinematics/velocity
+        # variables for odometry
+        self.time = 0
+        self.interval = 0
+        self.dpos = 0
+        self.drot = 0
+        self.vpos = 0
+        self.vrot = 0
         self.xpos = 0
         self.ypos = 0
         self.theta = 0
@@ -40,7 +52,7 @@ class MoveNode(DTROS):
         # variables for ticks
         self.radius = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/radius', 0.0325)
         self.circumference = 2 * math.pi * self.radius
-        self.w_dist = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/baseline', 0.1) / 2
+        self.w_dist = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/baseline', 0.1 / 2) / 2
         self.l_res = -1
         self.r_res = -1
         self.l_ticks = -1
@@ -125,13 +137,13 @@ class MoveNode(DTROS):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
             rospy.loginfo(f"cur_meters: {self.cpos}")
-            self.command_wheel(1, speed, 1, speed)
+            self.set_velocities(speed, 0)
             cur_meters = self.cpos - starting_cpos
             rospy.loginfo(f"cur_meters: {self.cpos}")
             if cur_meters >= meters:
                 break
             rate.sleep()
-        self.command_wheel(0, 0, 0, 0)
+        self.set_velocities(0, 0)
     
     def rotate(self, radians, speed):
         '''
@@ -142,14 +154,14 @@ class MoveNode(DTROS):
         starting_ctheta = self.ctheta
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-            self.command_wheel(1, speed, -1, speed)
+            self.set_velocities(0, speed)
             cur_radians = self.ctheta - starting_ctheta
             if cur_radians >= radians:
                 break
             rate.sleep()
-        self.command_wheel(0, 0, 0, 0)
+        self.set_velocities(0, 0)
         
-    def drive_arc(self, distance, arc, speed):
+    def drive_arc(self, distance, theta, speed):
         '''
         arc in [-1, 1], where -1 is full left turn, 1 is full right turn
         0 is straight
@@ -157,17 +169,14 @@ class MoveNode(DTROS):
         speed should be in [-1, 1]
         '''
         starting_cpos = self.cpos
-        left_speed = speed * (1 + arc)
-        right_speed = speed * (1 - arc)
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-            rospy.loginfo("arc")
-            self.command_wheel(1, left_speed, 1, right_speed)
+            self.set_velocities(speed, theta)
             cur_meters = self.cpos - starting_cpos
             if cur_meters >= distance:
                 break
             rate.sleep()
-        self.command_wheel(0, 0, 0, 0)
+        self.set_velocities(0, 0)
 
     def pause(self, seconds):
         '''
@@ -176,7 +185,7 @@ class MoveNode(DTROS):
         rate = rospy.Rate(10)
         start_time = rospy.Time.now()
         while not rospy.is_shutdown():
-            self.command_wheel(0, 0, 0, 0)
+            self.set_velocities(0, 0)
             cur_time = rospy.Time.now()
             if (cur_time - start_time).to_sec() >= seconds:
                 break
@@ -206,6 +215,7 @@ class MoveNode(DTROS):
         blue = ColorRGBA(r=0, g=0, b=255, a=255)
         cyan = ColorRGBA(r=0, g=255, b=255, a=255)
         command.rgb_vals = [purple, purple, green, purple, purple]
+        command.frequency = 0.1
         self.led_command.publish(command)
 
     def command_leds_color(self, color=ColorRGBA(r=255, g=255, b=255, a=255)):
@@ -226,14 +236,12 @@ class MoveNode(DTROS):
         command.rgb_vals = [white, red, white, red, white]
         self.led_command.publish(command)
 
-    def command_wheel(self, ldirection, lthrottle, rdirection, rthrottle):
+    def set_velocities(self, linear, rotational):
         '''
-        sets the wheel velocities
+        sets the linear/rotational velocities of the Duckiebot
         '''
-        command = WheelsCmdStamped(vel_left=ldirection*lthrottle, vel_right=rdirection*rthrottle)
-        self.wheel_command.publish(command)
+        self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
 
-    # define other functions if needed
     def straight_line_task(self):
         self.drive_straight(1.25, 0.4)
         self.pause(0.5)
@@ -300,20 +308,18 @@ class MoveNode(DTROS):
     def on_shutdown(self):
         # on shutdown,
         # stop the wheels
-        self.wheel_command.publish(WheelsCmdStamped(vel_left=0, vel_right=0))
+        self.set_velocities(0, 0)
         # reset the leds
         self.command_leds_default()
 
 if __name__ == '__main__':
     # create node
     node = MoveNode(node_name='move_node')
-    # wait for it to initialize
-    rospy.sleep(2)
     # start the thread that calculates odometry
     vthread = threading.Thread(target=node.calculate_velocities)
     vthread.start()
-    # start the d task
-    node.d_task()
+    # start the selected task
+    node.command_leds_test()
     # join the odometry thread (thread ends on shutdown)
     vthread.join()
     rospy.spin()
