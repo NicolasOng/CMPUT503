@@ -124,14 +124,21 @@ class LaneDetectionNode(DTROS):
                                     mask = color_mask) 
         elif color == Color.WHITE:
             # For white color 
-            color_mask = cv2.inRange(hsvFrame, self.yellow_lower, self.yellow_higher)
+            color_mask = cv2.inRange(hsvFrame, self.white_lower, self.white_higher)
             color_mask = cv2.dilate(color_mask, kernel) 
             res_color = cv2.bitwise_and(cv2_img, cv2_img, 
                                     mask = color_mask) 
         assert color_mask is not None
         return color_mask
 
-
+    """
+    Draw bounding box around the color objects in the img
+    Args:
+        color: color enum (red, blue green yellow, white)
+        cv2_img: img
+    return:
+        None
+    """
     def draw_contour(self, color: Color, cv2_img):
         color_mask = self.get_color_mask(color, cv2_img)
         color_bgr = self.color_to_bgr[color]  # (0-255, 0-255, 0-255) bgr format
@@ -156,9 +163,11 @@ class LaneDetectionNode(DTROS):
 
 
     """
-    Following
-    
-    
+    Currently just draws contour
+    Args:
+        cv2_img: img
+    return:
+        None 
     """
     def detect_lane_color(self, cv2_img):
         # add your code here
@@ -172,7 +181,11 @@ class LaneDetectionNode(DTROS):
         # potentially useful in question 2.1
         pass
     
+    """
+    Callback for /csc22946/camera_node/image/compressed topic.
+    Undistort image and run color detection on it
     
+    """
     def callback(self, msg):
         # add your code here
         
