@@ -19,14 +19,9 @@ class MoveNode(DTROS):
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         # Subscribers
-        # gets the pose from the velocity -> based on kinematics_node/velocity
         #self.pose = rospy.Subscriber(f'/{self.vehicle_name}/velocity_to_pose_node/pose', Pose2DStamped, self.pose_callback)
-        # gets the linear/angular velocity from the wheel speeds -> based on car_cmd_switch_node/cmd
-        # note: this seems to be based on commands, not actual wheel speeds.
         #self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
-        # gets the executed wheel speeds -> based on car_cmd_switch_node/cmd
         #self.wheels_cmd_executed = rospy.Subscriber(f'/{self.vehicle_name}/wheels_driver_node/wheels_cmd_executed', Twist2DStamped, self.velocity_callback)
-        # gets the current amount of wheel ticks that have passed, probably based on wheel sensors
         self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
         self.right_encoder = rospy.Subscriber(f'/{self.vehicle_name}/right_wheel_encoder_node/tick', WheelEncoderStamped, self.right_wheel_callback)
 
@@ -37,12 +32,6 @@ class MoveNode(DTROS):
         self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise3/odometry', String, queue_size=10)
 
         # variables for odometry
-        self.time = 0
-        self.interval = 0
-        self.dpos = 0
-        self.drot = 0
-        self.vpos = 0
-        self.vrot = 0
         self.xpos = 0
         self.ypos = 0
         self.theta = 0
@@ -51,7 +40,6 @@ class MoveNode(DTROS):
 
         # variables for ticks
         self.radius = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/radius', 0.0325)
-        self.circumference = 2 * math.pi * self.radius
         self.w_dist = rospy.get_param(f'/{self.vehicle_name}/kinematics_node/baseline', 0.1 / 2) / 2
         self.l_res = -1
         self.r_res = -1
@@ -70,12 +58,13 @@ class MoveNode(DTROS):
         self.r_res = msg.resolution 
         self.r_ticks = msg.data
 
-    def calculate_velocities(self):
+    def odometry(self):
         rate = rospy.Rate(5)
         ptime = rospy.Time.now()
         plticks = -1
         prticks = -1
 
+        # this loop runs until self.[l/r]_ticks gets a value from the [right/left] wheel callbacks
         while plticks == -1 or prticks == -1:
             plticks = self.l_ticks
             prticks = self.r_ticks
@@ -83,33 +72,46 @@ class MoveNode(DTROS):
             rate.sleep()
 
         while not rospy.is_shutdown():
+            # get the current time
             cur_time = rospy.Time.now()
 
+            # using the current and previous time, get the change in time in seconds
             dtime = cur_time - ptime
-            dtime = dtime.to_sec()
+            dtime = max(dtime.to_sec(), 1e-6)
 
-            dlticks = plticks - self.l_ticks
-            drticks = prticks - self.r_ticks
+            # get the change in wheel ticks in that time
+            dlticks = self.l_ticks - plticks
+            drticks = self.r_ticks - prticks
 
-            rospy.loginfo(f'left: {dlticks}, right: {drticks}')
-
+            # convert from ticks to radians
             dlrads = (dlticks / self.l_res) * (2 * math.pi)
             drrads = (drticks / self.r_res) * (2 * math.pi)
 
+            # convert from change in wheel radians to robot linear/rotational distance travelled
             dpos = (self.radius * dlrads + self.radius * drrads) / 2
             drot = (self.radius * dlrads - self.radius * drrads) / (2 * self.w_dist)
 
-            drot = drot * self.rot_correction
+            # a correction term (not sure why, but it works)
             dpos = dpos * self.pos_correction
+            drot = drot * self.rot_correction
 
+            # get the velocity of the bot in this interval (not used)
+            vpos = dpos / dtime
+            vrot = drot / dtime
+
+            # add the change in linear/rotational distance to the bot's previous estimated position
+            # to get the current estimated position
             self.xpos = self.xpos + dpos * np.cos(self.theta)
             self.ypos = self.ypos + dpos * np.sin(self.theta)
             self.theta = self.theta + drot
 
+            # also set the cumulative linear/rotation distance travelled
             self.cpos += abs(dpos)
             self.ctheta += abs(drot)
+
+            # log some info and publish to a topic
+            rospy.loginfo(f'left: {dlticks}, right: {drticks}')
             rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
-            
             odometry_data = {
                 "time": cur_time.to_sec(),
                 "interval": dtime,
@@ -117,11 +119,20 @@ class MoveNode(DTROS):
                 "ypos": self.ypos,
                 "theta": self.theta,
                 "cpos": self.cpos,
-                "ctheta": self.ctheta
+                "ctheta": self.ctheta,
+                "dlticks": dlticks,
+                "drticks": drticks,
+                "dlrads": dlrads,
+                "drrads": drrads,
+                "dpos": dpos,
+                "drot": drot,
+                "vpos": vpos,
+                "vrot": vrot
             }
             json_odometry = json.dumps(odometry_data)
             self.odometry_topic.publish(json_odometry)
 
+            # change the previous ticks/time and sleep
             plticks = self.l_ticks
             prticks = self.r_ticks
             ptime = cur_time
@@ -191,36 +202,21 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
 
-    def command_leds_test(self):
+    def command_leds_all(self, colors):
         '''
-        sets the leds to the set colors below
-        this method mostly used to test LED functionality
-        Header header
-        string[]  color_list
-        std_msgs/ColorRGBA[]  rgb_vals
-        int8[]    color_mask
-        float32   frequency
-        int8[]    frequency_mask
-        LEDs:
+        sets the leds to the given list of ColorRGBA values
+        the list should be 5 long and follow:
         - 0: front, port side
         - 1: back, fan side
         - 2: ???
         - 3: back, port side
         - 4: front, fan side
-        Some Duckiebots have 5 LEDs, ours has 4, so one does nothing.
-        Frequency doesn't seem to work with our bot.
         '''
         command = LEDPattern()
-        purple = ColorRGBA(r=255, g=0, b=255, a=255)
-        red = ColorRGBA(r=255, g=0, b=0, a=255)
-        green = ColorRGBA(r=0, g=255, b=0, a=255)
-        blue = ColorRGBA(r=0, g=0, b=255, a=255)
-        cyan = ColorRGBA(r=0, g=255, b=255, a=255)
-        command.rgb_vals = [purple, purple, green, purple, purple]
-        command.frequency = 10.0
+        command.rgb_vals = colors
         self.led_command.publish(command)
 
-    def command_leds_color(self, color=ColorRGBA(r=255, g=255, b=255, a=255)):
+    def command_leds_color(self, color=ColorRGBA(r=255, g=0, b=255, a=255)):
         '''
         sets all the leds to the given color
         '''
@@ -329,7 +325,7 @@ if __name__ == '__main__':
     # wait for it to initialize
     rospy.sleep(2)
     # start the thread that calculates odometry
-    vthread = threading.Thread(target=node.calculate_velocities)
+    vthread = threading.Thread(target=node.odometry)
     vthread.start()
     # start the selected task
     node.random_task()
