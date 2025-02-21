@@ -43,15 +43,15 @@ class LaneDetectionNode(DTROS):
         self.blue_upper = np.array([120, 255, 255], np.uint8) 
 
         """
-        yellow H: [21, 33], S: [100, 255], V = [153, 255]  # H range 0-160. S range 0-255. V range 0-100
-        White lower: [0, 0, 255], higher [255, 15, 255]
-        
+        yellow H: [21, 33], S: [100, 255], V = [153, 255]  # H range 0-170. S range 0-255. V range 0-100
+
+        white H: [0, 170], S: [0, 15], V: [255, 255]
         """
         self.yellow_lower = np.array([21, 100, 60*2.55], np.uint8)
         self.yellow_higher = np.array([33, 255, 100*2.55], np.uint8)
 
-        self.white_lower = np.array([0, 0, 255], np.uint8)  # for white. any value of Hue works. just maximum brighteness
-        self.white_higher = np.array([170, 15, 255], np.uint8)
+        self.white_lower = np.array([0, 0, 200], np.uint8)  # for white. any value of Hue works. just maximum brighteness
+        self.white_higher = np.array([170, 25, 255], np.uint8)
         # initialize bridge and subscribe to camera feed
         self._window = "camera-reader"
         cv2.namedWindow(self._window, cv2.WINDOW_AUTOSIZE)
