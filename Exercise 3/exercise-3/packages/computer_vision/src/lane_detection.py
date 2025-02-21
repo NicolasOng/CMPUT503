@@ -8,7 +8,7 @@ import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from sensor_msgs.msg import CompressedImage, Image
-
+from Color import Color
 import cv2
 from cv_bridge import CvBridge
 
@@ -41,9 +41,37 @@ class LaneDetectionNode(DTROS):
 
         self.blue_lower = np.array([94, 80, 2], np.uint8) 
         self.blue_upper = np.array([120, 255, 255], np.uint8) 
+
+        """
+        yellow H: [21, 33], S: [100, 255], V = [153, 255]  # H range 0-160. S range 0-255. V range 0-100
+        White lower: [0, 0, 255], higher [255, 15, 255]
+        
+        """
+        self.yellow_lower = np.array([21, 100, 60*2.55], np.uint8)
+        self.yellow_higher = np.array([33, 255, 100*2.55], np.uint8)
+
+        self.white_lower = np.array([0, 0, 255], np.uint8)  # for white. any value of Hue works. just maximum brighteness
+        self.white_higher = np.array([170, 15, 255], np.uint8)
         # initialize bridge and subscribe to camera feed
         self._window = "camera-reader"
         cv2.namedWindow(self._window, cv2.WINDOW_AUTOSIZE)
+
+        self.color_to_str = {
+            Color.RED : "red",
+            Color.BLUE: "blue",
+            Color.GREEN: "green",
+            Color.WHITE: "white",
+            Color.YELLOW: "yellow",
+        }
+
+        # opencv channel is bgr instead of rgb
+        self.color_to_bgr = {
+            Color.RED : (0, 0, 255),
+            Color.BLUE: (255, 0, 0),
+            Color.GREEN: (0, 255, 0),
+            Color.WHITE: (255, 255, 255),
+            Color.YELLOW: (0, 255, 255),
+        }
         # lane detection publishers
 
         # LED
@@ -70,8 +98,60 @@ class LaneDetectionNode(DTROS):
         pass
     
     
-    def draw_contour(self):
+    """
+    Return a Binary color mask from the cv2_img. Used to draw contours
+    Args:
+        color: color enum {red, blue, gree, yellow, white}
+        cv2_img: img
+    return:
+        a binary mask
+    """
+    def get_color_mask(self, color: Color, cv2_img):
+        hsvFrame = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2HSV) 
+        kernel = np.ones((5, 5), "uint8") 
+        color_mask = None
+        if color == Color.RED:
+            # For red color 
+            color_mask = cv2.inRange(hsvFrame, self.red_lower, self.red_upper)
+            color_mask = cv2.dilate(color_mask, kernel) 
+            res_color = cv2.bitwise_and(cv2_img, cv2_img, 
+                                    mask = color_mask) 
+        elif color == Color.YELLOW:
+            # For yellow color 
+            color_mask = cv2.inRange(hsvFrame, self.yellow_lower, self.yellow_higher)
+            color_mask = cv2.dilate(color_mask, kernel) 
+            res_color = cv2.bitwise_and(cv2_img, cv2_img, 
+                                    mask = color_mask) 
+        elif color == Color.WHITE:
+            # For white color 
+            color_mask = cv2.inRange(hsvFrame, self.yellow_lower, self.yellow_higher)
+            color_mask = cv2.dilate(color_mask, kernel) 
+            res_color = cv2.bitwise_and(cv2_img, cv2_img, 
+                                    mask = color_mask) 
+        assert color_mask is not None
+        return color_mask
 
+
+    def draw_contour(self, color: Color, cv2_img):
+        color_mask = self.get_color_mask(color, cv2_img)
+        color_bgr = self.color_to_bgr[color]  # (0-255, 0-255, 0-255) bgr format
+
+        # Creating contour to track red color 
+        contours, hierarchy = cv2.findContours(color_mask, 
+                                            cv2.RETR_TREE, 
+                                            cv2.CHAIN_APPROX_SIMPLE) 
+    
+        for pic, contour in enumerate(contours): 
+            area = cv2.contourArea(contour) 
+            if(area > 300): 
+                x, y, w, h = cv2.boundingRect(contour) 
+                cv2_img = cv2.rectangle(cv2_img, (x, y), 
+                                        (x + w, y + h), 
+                                        color_bgr, 2) 
+                
+                cv2.putText(cv2_img, self.color_to_str[color], (x, y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
+                            color_bgr)     
         return
 
 
@@ -83,46 +163,8 @@ class LaneDetectionNode(DTROS):
     def detect_lane_color(self, cv2_img):
         # add your code here
         # color space 
-        hsvFrame = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2HSV) 
-        red_mask = cv2.inRange(hsvFrame, self.red_lower, self.red_upper)
-        green_mask = cv2.inRange(hsvFrame, self.green_lower, self.green_upper) 
-        blue_mask = cv2.inRange(hsvFrame, self.blue_lower, self.blue_upper) 
-        blue_mask = cv2.inRange(hsvFrame, self.blue_lower, self.blue_upper) 
-
-        kernel = np.ones((5, 5), "uint8") 
-
-        # For red color 
-        red_mask = cv2.dilate(red_mask, kernel) 
-        res_red = cv2.bitwise_and(cv2_img, cv2_img, 
-                                mask = red_mask) 
-        
-        # For green color 
-        green_mask = cv2.dilate(green_mask, kernel) 
-        res_green = cv2.bitwise_and(cv2_img, cv2_img, 
-                                    mask = green_mask) 
-        
-        # For blue color 
-        blue_mask = cv2.dilate(blue_mask, kernel) 
-        res_blue = cv2.bitwise_and(cv2_img, cv2_img, 
-                                mask = blue_mask) 
-
-        # Creating contour to track red color 
-        contours, hierarchy = cv2.findContours(red_mask, 
-                                            cv2.RETR_TREE, 
-                                            cv2.CHAIN_APPROX_SIMPLE) 
-        print(f'contours {contours}') 
-        for pic, contour in enumerate(contours): 
-            area = cv2.contourArea(contour) 
-            if(area > 300): 
-                x, y, w, h = cv2.boundingRect(contour) 
-                cv2_img = cv2.rectangle(cv2_img, (x, y), 
-                                        (x + w, y + h), 
-                                        (0, 0, 255), 2) 
-                
-                cv2.putText(cv2_img, "Red Colour", (x, y), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
-                            (0, 0, 255))     
-
+        self.draw_contour(Color.YELLOW, cv2_img)
+        self.draw_contour(Color.WHITE, cv2_img)
         return cv2_img
     
     def detect_lane(self, **kwargs):
