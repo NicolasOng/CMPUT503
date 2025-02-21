@@ -83,13 +83,20 @@ def convert_odometry_df(df):
 def for_odometry(df_odometry):
     df_odometry = convert_odometry_df(df_odometry)
 
-    positions_to_positional_velocity(df_odometry, 3.825) # 3.875
-    positional_velocity_to_position(df_odometry)
+    #positions_to_positional_velocity(df_odometry, 2.125) # 3.875, 2.125
+    #positional_velocity_to_position(df_odometry)
     robot_to_arbitrary_frame(df_odometry, -math.pi/2, 0, 0)
 
     plot_trajectory(df_odometry)
     #plot(df_odometry, 'ctheta')
     #plot(df_odometry, 'cpos')
+
+def for_pose(df_pose):
+    #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'x', 'y', 'theta']
+    df_pose['time'] = df_pose['Time']
+    df_pose["xpos"] = df_pose["x"]
+    df_pose["ypos"] = df_pose["y"]
+    plot_trajectory(df_pose, color="theta")
 
 def for_velocity(df_velocity):
     #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'v', 'omega']
@@ -151,10 +158,10 @@ def plot(df, col):
     plt.show()
 
 if __name__ == '__main__':
-    bf = bagreader('bags/2025-02-20comparison.bag')
+    bf = bagreader('bags/2025-02-21-22-36-31.bag')
 
     for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'))
-    #df_pose = read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose')
+    #for_pose(read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose'))
     #for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
     #for_ticks(read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick'))
     #for_wheels_cmd_executed(read_bagfile(bf, '/csc22946/wheels_driver_node/wheels_cmd_executed'))

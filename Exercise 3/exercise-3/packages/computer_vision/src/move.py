@@ -46,10 +46,6 @@ class MoveNode(DTROS):
         self.l_ticks = -1
         self.r_ticks = -1
 
-        # corrective values
-        self.rot_correction = 1.75
-        self.pos_correction = 1.5
-
     def left_wheel_callback(self, msg):
         self.l_res = msg.resolution
         self.l_ticks = msg.data
@@ -59,7 +55,7 @@ class MoveNode(DTROS):
         self.r_ticks = msg.data
 
     def odometry(self):
-        rate = rospy.Rate(5)
+        rate = rospy.Rate(5) #5
         ptime = rospy.Time.now()
         plticks = -1
         prticks = -1
@@ -92,8 +88,8 @@ class MoveNode(DTROS):
             drot = (self.radius * dlrads - self.radius * drrads) / (2 * self.w_dist)
 
             # a correction term (not sure why, but it works)
-            dpos = dpos * self.pos_correction
-            drot = drot * self.rot_correction
+            dpos = dpos * 1
+            drot = drot * 1.66667 # / 2.125
 
             # get the velocity of the bot in this interval (not used)
             vpos = dpos / dtime
@@ -111,6 +107,7 @@ class MoveNode(DTROS):
 
             # log some info and publish to a topic
             rospy.loginfo(f'left: {dlticks}, right: {drticks}')
+            rospy.loginfo(f'num rots: {self.theta / (math.pi*2):.2f}')
             rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
             odometry_data = {
                 "time": cur_time.to_sec(),
@@ -328,7 +325,7 @@ if __name__ == '__main__':
     vthread = threading.Thread(target=node.odometry)
     vthread.start()
     # start the selected task
-    node.random_task()
+    #node.random_task()
     # join the odometry thread (thread ends on shutdown)
     vthread.join()
     rospy.spin()
