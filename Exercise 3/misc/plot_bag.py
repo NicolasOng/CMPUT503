@@ -13,13 +13,6 @@ import math
 import matplotlib.pyplot as plt
 import json
 
-# the radius of the wheels on the duckiebot
-# from rosparam /csc22946/kinematics_node/radius
-WHEEL_RADIUS = 0.0318 # meters
-# the distance between the wheels and the center of the robot
-# TODO: estimation
-WHEEL_DIST = 0.2 # meters
-
 def read_bagfile(bf, topic):
     # read the topic we're interested in
     topic_bag = bf.message_by_topic(topic)
@@ -98,6 +91,23 @@ def for_odometry(df_odometry):
     #plot(df_odometry, 'ctheta')
     #plot(df_odometry, 'cpos')
 
+def for_velocity(df_velocity):
+    #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'v', 'omega']
+    df_velocity['time'] = df_velocity['Time']
+    plot(df_velocity, "v")
+    plot(df_velocity, "omega")
+
+def for_ticks(df_ticks):
+    # ['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'data', 'resolution', 'type']
+    df_ticks['time'] = df_ticks['Time']
+    plot(df_ticks, "data")
+
+def for_wheels_cmd_executed(df_wce):
+    #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'vel_left', 'vel_right']
+    df_wce['time'] = df_wce['Time']
+    plot(df_wce, "vel_left")
+    plot(df_wce, "vel_right")
+
 # Plotting functions
 
 def plot_trajectory(df_bot, color="vpos", arrows=True, arrow_size=0.01):
@@ -137,15 +147,14 @@ def plot(df, col):
     plt.title(f'time vs {col}')
     plt.legend()
 
-    # Set equal aspect ratio
-    plt.gca().set_aspect('equal')
-
     # Show plot
     plt.show()
 
 if __name__ == '__main__':
-    bf = bagreader('bags/2025-02-13goodrun.bag')
+    bf = bagreader('bags/2025-02-20comparison.bag')
 
-    df_odometry = read_bagfile(bf, '/csc22946/exercise2/odometry')
-
-    for_odometry(df_odometry)
+    for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'))
+    #df_pose = read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose')
+    #for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
+    #for_ticks(read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick'))
+    #for_wheels_cmd_executed(read_bagfile(bf, '/csc22946/wheels_driver_node/wheels_cmd_executed'))

@@ -1,7 +1,7 @@
 # parameters
 ARG REPO_NAME="assignment3"
 ARG DESCRIPTION="assignment 3 solution"
-ARG MAINTAINER="Dikshant (ddikshan@ualberta.ca)"
+ARG MAINTAINER="Nicolas Ong (nicolas.ong@ualberta.ca)"
 # pick an icon from: https://fontawesome.com/v4.7.0/icons/
 ARG ICON="cube"
 
