@@ -36,8 +36,8 @@ class LaneDetectionNode(DTROS):
         self.red_lower = np.array([136, 87, 111], np.uint8) 
         self.red_upper = np.array([180, 255, 255], np.uint8) 
 
-        self.green_lower = np.array([25, 52, 72], np.uint8) 
-        self.green_upper = np.array([102, 255, 255], np.uint8) 
+        self.green_lower = np.array([34, 52, 72], np.uint8) 
+        self.green_upper = np.array([82, 255, 255], np.uint8) 
 
         self.blue_lower = np.array([94, 80, 2], np.uint8) 
         self.blue_upper = np.array([120, 255, 255], np.uint8) 
@@ -116,6 +116,18 @@ class LaneDetectionNode(DTROS):
             color_mask = cv2.dilate(color_mask, kernel) 
             res_color = cv2.bitwise_and(cv2_img, cv2_img, 
                                     mask = color_mask) 
+        elif color == Color.BLUE:
+            # For red color 
+            color_mask = cv2.inRange(hsvFrame, self.blue_lower, self.blue_upper)
+            color_mask = cv2.dilate(color_mask, kernel) 
+            res_color = cv2.bitwise_and(cv2_img, cv2_img, 
+                                    mask = color_mask) 
+        elif color == Color.GREEN:
+            # For red color 
+            color_mask = cv2.inRange(hsvFrame, self.green_lower, self.green_upper)
+            color_mask = cv2.dilate(color_mask, kernel) 
+            res_color = cv2.bitwise_and(cv2_img, cv2_img, 
+                                    mask = color_mask) 
         elif color == Color.YELLOW:
             # For yellow color 
             color_mask = cv2.inRange(hsvFrame, self.yellow_lower, self.yellow_higher)
@@ -174,6 +186,9 @@ class LaneDetectionNode(DTROS):
         # color space 
         self.draw_contour(Color.YELLOW, cv2_img)
         self.draw_contour(Color.WHITE, cv2_img)
+        self.draw_contour(Color.RED, cv2_img)
+        self.draw_contour(Color.BLUE, cv2_img)
+        self.draw_contour(Color.GREEN, cv2_img)
         return cv2_img
     
     def detect_lane(self, **kwargs):
