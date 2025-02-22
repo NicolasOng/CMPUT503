@@ -79,6 +79,7 @@ class LaneDetectionNode(DTROS):
         # ROI vertices
         
         # define other variables as needed
+        self.cam_y, self.cam_x = 480, 640
     
     def undistort_image(self, cv2_img):
         # add your code here
@@ -159,8 +160,7 @@ class LaneDetectionNode(DTROS):
         contours, hierarchy = cv2.findContours(color_mask, 
                                             cv2.RETR_TREE, 
                                             cv2.CHAIN_APPROX_SIMPLE) 
-    
-        for pic, contour in enumerate(contours): 
+        for pic, contour in enumerate(contours):
             area = cv2.contourArea(contour) 
             if(area > 300): 
                 x, y, w, h = cv2.boundingRect(contour) 
@@ -185,11 +185,36 @@ class LaneDetectionNode(DTROS):
         # add your code here
         # color space 
         self.draw_contour(Color.YELLOW, cv2_img)
-        self.draw_contour(Color.WHITE, cv2_img)
-        self.draw_contour(Color.RED, cv2_img)
-        self.draw_contour(Color.BLUE, cv2_img)
-        self.draw_contour(Color.GREEN, cv2_img)
+        #self.draw_contour(Color.WHITE, cv2_img)
+        #self.draw_contour(Color.RED, cv2_img)
+        #self.draw_contour(Color.BLUE, cv2_img)
+        #self.draw_contour(Color.GREEN, cv2_img)
         return cv2_img
+    
+    def detect_yellow_balance(self, cv2_img):
+        left_yellow = 0
+        right_yellow = 0
+        mid_x = self.cam_x / 2
+        # get the yellow color mask
+        color_mask = self.get_color_mask(Color.YELLOW, cv2_img)
+        # get the yellow contours (vectors of coordinates in each blob in the mask)
+        contours, hierarchy = cv2.findContours(color_mask, 
+                                            cv2.RETR_TREE, 
+                                            cv2.CHAIN_APPROX_SIMPLE)
+        # for each contour,
+        for pic, contour in enumerate(contours):
+            # for each coordinate in the contour,
+            for coord in contour:
+                # get the x and y coordinates
+                x, y = coord[0]
+                if x < mid_x:
+                    left_yellow += 1
+                else:
+                    right_yellow += 1
+        cv2.putText(cv2_img, f'{left_yellow}, {right_yellow}', (int(mid_x), self.cam_y - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
+                            self.color_to_bgr[Color.YELLOW]) 
+        return cv2_img 
     
     def detect_lane(self, **kwargs):
         # add your code here
@@ -210,6 +235,9 @@ class LaneDetectionNode(DTROS):
         undistort_cv2_img = self.undistort_image(cv2_image)
         # preprocess image
         undistort_cv2_img = self.detect_lane_color(undistort_cv2_img)
+
+        #testing yellow balance
+        undistort_cv2_img = self.detect_yellow_balance(undistort_cv2_img)
 
 
 
