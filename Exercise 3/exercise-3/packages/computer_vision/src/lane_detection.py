@@ -8,6 +8,7 @@ import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from sensor_msgs.msg import CompressedImage, Image
+from duckietown_msgs.msg import Pose2DStamped, WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
 from Color import Color
 import cv2
 from cv_bridge import CvBridge
@@ -27,6 +28,7 @@ class LaneDetectionNode(DTROS):
         self.undistorted_pub = rospy.Publisher(f"{self._vehicle_name}/undistorted", Image, queue_size=10)
         self.blur_pub = rospy.Publisher(f"{self._vehicle_name}/blur", Image, queue_size=10)
         self.resize_pub = rospy.Publisher(f"{self._vehicle_name}/resize", Image, queue_size=10)
+        self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([[319.2461317458548, 0.0, 307.91668484581703], [0.0, 317.75077109798957, 255.6638447529814], [0.0, 0.0, 1.0]])
@@ -80,6 +82,55 @@ class LaneDetectionNode(DTROS):
         
         # define other variables as needed
         self.cam_y, self.cam_x = 480, 640
+
+        # camera image
+        self.camera_image = None
+
+        # PID controller variables
+        self.kp = 0  # Proportional gain
+        self.ki = 0  # Integral gain
+        self.kd = 0  # Derivative gain
+        self.previous_error = 0
+        self.integral = 0
+        
+    def get_pid_controls(self, measured_value, desired_value, dt, reset=False):
+        '''
+        The method to get PID controls.
+        For P/PD, just set ki and/or kd to 0
+        use the reset flag when the desired value changes a lot
+        need to tune the kp, ki, kd values for different tasks (keep a note of them)
+        '''
+        if reset:
+            self.integral = 0
+            self.previous_error = 0
+        error = desired_value - measured_value
+        self.integral += error * dt
+        derivative = (error - self.previous_error) / dt if dt > 0 else 0
+        
+        output = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+        self.previous_error = error
+        
+        return output
+    
+    def balance_yellow(self):
+        '''
+        during this function, the robot should be constantly moving forward.
+        the robot will also turn left or right to balance the yellow color on the left and right side of its image feed.
+        this is done using color detection and PID controls.
+        '''
+        linear = 0.5
+        rate_hz = 10
+        dt = 1 / rate_hz
+        rate = rospy.Rate(rate_hz)
+        # wait for the camera feed to start
+        while self.camera_image is None:
+            rate.sleep()
+        while not rospy.is_shutdown():
+            left_yellow, right_yellow = self.get_yellow_balance(self.camera_image)
+            yellow_balance = left_yellow - right_yellow
+            rotational = self.get_pid_controls(yellow_balance, 0, dt)
+            self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
+            rate.sleep()
     
     def undistort_image(self, cv2_img):
         # add your code here
@@ -191,7 +242,7 @@ class LaneDetectionNode(DTROS):
         #self.draw_contour(Color.GREEN, cv2_img)
         return cv2_img
     
-    def detect_yellow_balance(self, cv2_img):
+    def get_yellow_balance(self, cv2_img):
         left_yellow = 0
         right_yellow = 0
         mid_x = self.cam_x / 2
@@ -211,10 +262,16 @@ class LaneDetectionNode(DTROS):
                     left_yellow += 1
                 else:
                     right_yellow += 1
+        return left_yellow, right_yellow
+    
+    def display_yellow_balance(self, cv2_img):
+        mid_x = self.cam_x / 2
+        left_yellow, right_yellow = self.get_yellow_balance(cv2_img)
         cv2.putText(cv2_img, f'{left_yellow}, {right_yellow}', (int(mid_x), self.cam_y - 10), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
-                            self.color_to_bgr[Color.YELLOW]) 
-        return cv2_img 
+                            self.color_to_bgr[Color.YELLOW])
+        return cv2_img
+
     
     def detect_lane(self, **kwargs):
         # add your code here
@@ -236,8 +293,10 @@ class LaneDetectionNode(DTROS):
         # preprocess image
         undistort_cv2_img = self.detect_lane_color(undistort_cv2_img)
 
-        #testing yellow balance
-        undistort_cv2_img = self.detect_yellow_balance(undistort_cv2_img)
+        # save image for methods not in this callback
+        self.camera_image = undistort_cv2_img
+        # yellow balance
+        undistort_cv2_img = self.display_yellow_balance(undistort_cv2_img)
 
 
 
@@ -262,7 +321,10 @@ class LaneDetectionNode(DTROS):
         
         pass
 
-    # add other functions as needed
+    def on_shutdown(self):
+        # on shutdown,
+        # stop the wheels
+        self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
 
 if __name__ == '__main__':
     node = LaneDetectionNode(node_name='lane_detection_node')

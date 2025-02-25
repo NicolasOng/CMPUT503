@@ -144,10 +144,8 @@ class MoveNode(DTROS):
         starting_cpos = self.cpos
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-            rospy.loginfo(f"cur_meters: {self.cpos}")
             self.set_velocities(speed, 0)
             cur_meters = self.cpos - starting_cpos
-            rospy.loginfo(f"cur_meters: {self.cpos}")
             if cur_meters >= meters:
                 break
             rate.sleep()
