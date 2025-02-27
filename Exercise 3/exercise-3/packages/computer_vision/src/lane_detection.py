@@ -110,10 +110,37 @@ class LaneDetectionNode(DTROS):
         
         return ground_point[:2]
 
+    """
+    the l2 distance between two points
+    """
     def get_distance(self, point1, point2):
         x1, y1 = point1
         x2, y2 = point2
         return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+    """
+    get the distance from the center of the image to the color objects
+    Args:
+        color: color enum {red, blue, green, yellow, white}
+        cv2_img: img
+    return:
+        list of distances from the center of the image to the detected color objects
+    """
+    def get_distance_from_color(self, color, cv2_img):
+        # get the color mask
+        color_mask = self.get_color_mask(color, cv2_img)
+        # get the color contours
+        contours, hierarchy = self.get_contours(color_mask)
+        
+        # get the distance from the center of the image to the color
+        distances = []
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            contour_center = (x + w / 2, y + h / 2)
+            projected_center_contour = self.project_points_to_ground(contour_center)
+
+            distances.append(abs(projected_center_contour[0]))
+        return distances
     
     
     def get_pid_controls(self, measured_value, desired_value, dt, reset=False):
@@ -218,6 +245,12 @@ class LaneDetectionNode(DTROS):
         assert color_mask is not None
         return color_mask
 
+    def get_contours(self, color_mask):
+        contours, hierarchy = cv2.findContours(color_mask, 
+                                            cv2.RETR_TREE, 
+                                            cv2.CHAIN_APPROX_SIMPLE)
+        return contours, hierarchy
+
     """
     Draw bounding box around the color objects in the img
     Args:
@@ -242,12 +275,12 @@ class LaneDetectionNode(DTROS):
                                         (x + w, y + h), 
                                         color_bgr, 2) 
                 
-                ground_point = self.project_points_to_ground((x, y))  # ground point for botton left corner of bounding box
+                contour_center = (x + w / 2, y + h / 2)
+                projected_center = self.project_points_to_ground(contour_center)
 
-                cv2.putText(cv2_img, self.color_to_str[color] + " " + str(np.round(ground_point, 1)), (x, y), 
+                cv2.putText(cv2_img, self.color_to_str[color] + " x: " + str(abs(projected_center[0])), (x, y), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
                             color_bgr)     
-
         return
 
 
@@ -347,6 +380,24 @@ class LaneDetectionNode(DTROS):
         
         pass
 
+    def drive_until_close_to_color(self, color, threshold):
+        # add your code here
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.car_cmd.publish(Twist2DStamped(v=0.5, omega=0))
+            if self.camera_image is None: 
+                continue
+            distances = self.get_distance_from_color(color, self.camera_image)
+            if len(distances) == 0:
+                continue
+            min_distance = min(distances)
+            print('min_distance', min_distance)
+            if min_distance < threshold:
+                self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
+                break
+            rate.sleep()
+        pass
+
     def on_shutdown(self):
         # on shutdown,
         # stop the wheels
@@ -354,4 +405,6 @@ class LaneDetectionNode(DTROS):
 
 if __name__ == '__main__':
     node = LaneDetectionNode(node_name='lane_detection_node')
+    rospy.sleep(2)
+    node.drive_until_blue(Color.YELLOW, 0.2)
     rospy.spin()
