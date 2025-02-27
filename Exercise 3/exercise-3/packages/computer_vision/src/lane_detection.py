@@ -28,12 +28,15 @@ class LaneDetectionNode(DTROS):
         self.undistorted_pub = rospy.Publisher(f"{self._vehicle_name}/undistorted", Image, queue_size=10)
         self.blur_pub = rospy.Publisher(f"{self._vehicle_name}/blur", Image, queue_size=10)
         self.resize_pub = rospy.Publisher(f"{self._vehicle_name}/resize", Image, queue_size=10)
-        self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
+        self.car_cmd = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([[319.2461317458548, 0.0, 307.91668484581703], [0.0, 317.75077109798957, 255.6638447529814], [0.0, 0.0, 1.0]])
         self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
         
+        # from extrinsic.yaml file
+        self.homography = np.array([[-0.00013668875104344582, 0.0005924050290243054, -0.5993724660928124], [-0.0022949507610645035, -1.5331615246117395e-05, 0.726763100835842], [0.00027302496335237673, 0.017296161892938217, -2.946528752705874]])
+
         # color detection parameters in HSV format
         self.red_lower = np.array([136, 87, 111], np.uint8) 
         self.red_upper = np.array([180, 255, 255], np.uint8) 
@@ -92,7 +95,27 @@ class LaneDetectionNode(DTROS):
         self.kd = 0  # Derivative gain
         self.previous_error = 0
         self.integral = 0
+    
+    """
+    project a point from the camera frame to the ground plane
+    
+    """
+    def project_points_to_ground(self, point):
+        x, y = point
+
+        point = np.array([x, y, 1])
+
+        ground_point = np.dot(self.homography, point)
+        ground_point /= ground_point[2]  # normalize by z
         
+        return ground_point[:2]
+
+    def get_distance(self, point1, point2):
+        x1, y1 = point1
+        x2, y2 = point2
+        return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    
+    
     def get_pid_controls(self, measured_value, desired_value, dt, reset=False):
         '''
         The method to get PID controls.
@@ -219,9 +242,12 @@ class LaneDetectionNode(DTROS):
                                         (x + w, y + h), 
                                         color_bgr, 2) 
                 
-                cv2.putText(cv2_img, self.color_to_str[color], (x, y), 
+                ground_point = self.project_points_to_ground((x, y))  # ground point for botton left corner of bounding box
+
+                cv2.putText(cv2_img, self.color_to_str[color] + " " + str(np.round(ground_point, 1)), (x, y), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
                             color_bgr)     
+
         return
 
 
@@ -296,7 +322,7 @@ class LaneDetectionNode(DTROS):
         # save image for methods not in this callback
         self.camera_image = undistort_cv2_img
         # yellow balance
-        undistort_cv2_img = self.display_yellow_balance(undistort_cv2_img)
+        #undistort_cv2_img = self.display_yellow_balance(undistort_cv2_img)
 
 
 
