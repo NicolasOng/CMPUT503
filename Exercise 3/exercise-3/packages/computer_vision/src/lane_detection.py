@@ -44,8 +44,8 @@ class LaneDetectionNode(DTROS):
         self.green_lower = np.array([34, 52, 72], np.uint8) 
         self.green_upper = np.array([82, 255, 255], np.uint8) 
 
-        self.blue_lower = np.array([94, 80, 2], np.uint8) 
-        self.blue_upper = np.array([120, 255, 255], np.uint8) 
+        self.blue_lower = np.array([110, 80, 120], np.uint8) 
+        self.blue_upper = np.array([130, 255, 255], np.uint8) 
 
         """
         yellow H: [21, 33], S: [100, 255], V = [153, 255]  # H range 0-170. S range 0-255. V range 0-100
@@ -294,10 +294,10 @@ class LaneDetectionNode(DTROS):
     def detect_lane_color(self, cv2_img):
         # add your code here
         # color space 
-        self.draw_contour(Color.YELLOW, cv2_img)
+        #self.draw_contour(Color.YELLOW, cv2_img)
         #self.draw_contour(Color.WHITE, cv2_img)
         #self.draw_contour(Color.RED, cv2_img)
-        #self.draw_contour(Color.BLUE, cv2_img)
+        self.draw_contour(Color.BLUE, cv2_img)
         #self.draw_contour(Color.GREEN, cv2_img)
         return cv2_img
     
@@ -329,7 +329,7 @@ class LaneDetectionNode(DTROS):
         cv2.putText(cv2_img, f'{left_yellow}, {right_yellow}', (int(mid_x), self.cam_y - 10), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
                             self.color_to_bgr[Color.YELLOW])
-        return cv2_img
+        return cv2_imgdrive_until_blue
 
     
     def detect_lane(self, **kwargs):
@@ -406,5 +406,5 @@ class LaneDetectionNode(DTROS):
 if __name__ == '__main__':
     node = LaneDetectionNode(node_name='lane_detection_node')
     rospy.sleep(2)
-    node.drive_until_blue(Color.YELLOW, 0.2)
+    #node.drive_until_close_to_color(Color.BLUE, 0.0)
     rospy.spin()
