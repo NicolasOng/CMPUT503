@@ -30,6 +30,9 @@ class LaneDetectionNode(DTROS):
         self.resize_pub = rospy.Publisher(f"{self._vehicle_name}/resize", Image, queue_size=10)
         self.car_cmd = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
+        self.yellow_mask_pub = rospy.Publisher(f"{self._vehicle_name}/yellow_mask", Image, queue_size=10)
+        self.white_mask_pub = rospy.Publisher(f"{self._vehicle_name}/white_mask", Image, queue_size=10)
+
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([[319.2461317458548, 0.0, 307.91668484581703], [0.0, 317.75077109798957, 255.6638447529814], [0.0, 0.0, 1.0]])
         self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
@@ -293,11 +296,17 @@ class LaneDetectionNode(DTROS):
     """
     def detect_lane_color(self, cv2_img):
         # add your code here
+
+        yellow_mask = self.get_color_mask(Color.YELLOW, cv2_img)
+        white_mask = self.get_color_mask(Color.WHITE, cv2_img)
+        self.yellow_mask_pub.publish(self._bridge.cv2_to_imgmsg(yellow_mask, encoding="mono8"))
+        self.white_mask_pub.publish(self._bridge.cv2_to_imgmsg(white_mask, encoding="mono8"))
+
         # color space 
         #self.draw_contour(Color.YELLOW, cv2_img)
         #self.draw_contour(Color.WHITE, cv2_img)
         #self.draw_contour(Color.RED, cv2_img)
-        self.draw_contour(Color.BLUE, cv2_img)
+        #self.draw_contour(Color.BLUE, cv2_img)
         #self.draw_contour(Color.GREEN, cv2_img)
         return cv2_img
     
