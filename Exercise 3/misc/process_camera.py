@@ -12,7 +12,7 @@ from enum import Enum
 '''
 
 w, h = 1200, 900
-translation = np.array([w / 2 - 93/2, 643], dtype=np.float32)
+translation = np.array([w / 2 - 50, 643], dtype=np.float32)
 src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
 dst_pts = np.array([[0, 0], [186, 0], [0, 186], [186, 186]], dtype=np.float32)
 dst_pts = dst_pts + translation
@@ -63,8 +63,19 @@ dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336
 # from extrinsic.yaml file
 homography = np.array([[-0.00013668875104344582, 0.0005924050290243054, -0.5993724660928124], [-0.0022949507610645035, -1.5331615246117395e-05, 0.726763100835842], [0.00027302496335237673, 0.017296161892938217, -2.946528752705874]])
 
+def rotate_image(image):
+    '''
+    this function rotates the image 90 degrees clockwise
+    '''
+    rotated_img = cv2.transpose(image)
+    rotated_img = cv2.flip(rotated_img, flipCode=1)
+    return rotated_img
 
 def undistort_image(cv2_img):
+    '''
+    this function undistorts the image using the camera matrix and distortion coefficients
+    these were calibrated manually for the given camera
+    '''
     # add your code here
     h, w = cv2_img.shape[:2]
     # optimal camera matrix lets us see entire camera image (image edges cropped without), but some distortion visible
@@ -75,6 +86,11 @@ def undistort_image(cv2_img):
     return undistorted_cv2img
 
 def get_color_mask(color: Color, cv2_img):
+    '''
+    the color mask gets all the pixels in the image that are within the color bounds
+    the color mask is an ndarray of shape (h, w) with values 0 or 255.
+    0 means the pixel is not in the color bounds, 255 means it is
+    '''
     hsv_frame = cv2.cvtColor(cv2_img, cv2.COLOR_BGR2HSV)
     kernel = np.ones((5, 5), np.uint8)
 
@@ -97,31 +113,79 @@ def get_color_mask(color: Color, cv2_img):
 
     return color_mask
 
-def project_points_to_ground(point):
-    x, y = point
+def get_color_mask_pixel_list(color: Color, cv2_img):
+    '''
+    this function returns a list of all the pixels in the image that are within the color bounds
+    the list is an ndarray of shape (n, 2) with n being the number of pixels
+    '''
+    # Get binary mask
+    mask = get_color_mask(color, cv2_img)  # Shape (h, w), values 0 or 255
 
-    point = np.array([x, y, 1])
+    # Get coordinates where mask is 255
+    y_coords, x_coords = np.where(mask == 255)
 
-    ground_point = np.dot(homography, point)
-    ground_point /= ground_point[2]  # normalize by z
-    
-    return ground_point[:2]
+    # Convert to (n, 2) shape in (x, y) order
+    points = np.column_stack((x_coords, y_coords))
 
-def draw_contour(color: Color, cv2_img):
+    return points  # Returns an (n, 2) array of (x, y) coordinates
+
+def get_contours(color: Color, cv2_img):
+    '''
+    using the color mask, we can get the contours of the color
+    the contours are the edges of the color, defined by a list of points
+    contours is a tuple of ndarrays of shape (n, 1, 2)
+    '''
     color_mask = get_color_mask(color, cv2_img)
-    color_bgr = color_to_bgr[color]  # (0-255, 0-255, 0-255) bgr format
-
-    # Creating contour to track red color 
     contours, hierarchy = cv2.findContours(color_mask, 
                                         cv2.RETR_TREE, 
-                                        cv2.CHAIN_APPROX_SIMPLE) 
+                                        cv2.CHAIN_APPROX_SIMPLE)
+    return contours
+
+def draw_contour(color: Color, cv2_img):
+    '''
+    this function draws bounding boxes around the found contours
+    of the given color
+    '''
+    contours = get_contours(color, cv2_img)
+    color_bgr = color_to_bgr[color]  # (0-255, 0-255, 0-255) bgr format
     for pic, contour in enumerate(contours):
         area = cv2.contourArea(contour) 
-        if(area > 300): 
+        if(area > 0): 
             x, y, w, h = cv2.boundingRect(contour) 
             cv2_img = cv2.rectangle(cv2_img, (x, y), 
                                     (x + w, y + h), 
                                     color_bgr, 2)     
+    return cv2_img
+
+def draw_points(points, color, cv2_img):
+    for point in points:
+        x, y = point
+        cv2.circle(cv2_img, (int(x), int(y)), radius=2, color=color_to_bgr[color], thickness=-1)
+    return cv2_img
+
+def get_best_fit_line(points):
+    x = points[:, 0].flatten()
+    y = points[:, 1].flatten()
+
+    coeffs = np.polyfit(x, y, 1)
+
+    #print(f"Best-fit curve: y = {coeffs[0]:.3f}x² + {coeffs[1]:.3f}x + {coeffs[2]:.3f}")
+    print(f"Best-fit line: y = {coeffs[0]:.3f}x + {coeffs[1]:.3f}")
+
+    return coeffs
+
+def plot_best_fit_line(coeffs, cv2_img, color):
+    # Generate x values for plotting in image
+    height, width = cv2_img.shape[:2]
+    x_fit = np.linspace(0, width, 1000)  # 100 points for smooth curve
+    y_fit = np.polyval(coeffs, x_fit)  # Compute corresponding y values
+
+    # Convert (x, y) into integer pixel coordinates
+    curve_points = np.column_stack((x_fit, y_fit)).astype(np.int32)
+
+    # Draw the curve on the OpenCV image
+    cv2.polylines(cv2_img, [curve_points], isClosed=False, color=color_to_bgr[color], thickness=2)
+
     return cv2_img
 
 def combine_masks(mask1, mask2):
@@ -136,8 +200,6 @@ def project_image_to_ground(image):
     # Compute new bounding box size after transformation (optional)
     corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
     new_corners = cv2.perspectiveTransform(corners.reshape(-1, 1, 2), homography_to_ground)
-
-    print(new_corners)
     
     # Compute the new width and height
     x_min, y_min = new_corners.min(axis=0).ravel()
@@ -150,17 +212,64 @@ def project_image_to_ground(image):
 
     return warped_image
 
+def draw_vertical_line(image, x, color):
+    '''
+    draws a vertical line at the given x-coordinate
+    '''
+    cv2.line(image, (x, 0), (x, image.shape[0]), color=color_to_bgr[color], thickness=2)
+    return image
+
+def draw_horizontal_line(image, y, color):
+    '''
+    draws a horizontal line at the given y-coordinate
+    '''
+    cv2.line(image, (0, y), (image.shape[1], y), color=color_to_bgr[color], thickness=2)
+    return image
+
+def best_fit_line_rotated_filtered(color, image):
+    '''
+    this function gets and draws the best fit line for the given color,
+    but in a rotated image, since we mostly deal with vertical lines
+    (best fit lines don't deal with veritcal lines well)
+    also filters out points that are farther in the distance from the camera
+    '''
+    # rotate the image 90 degrees clockwise
+    image = rotate_image(image)
+    # get the color mask pixels
+    points = get_color_mask_pixel_list(color, image)
+    # filter the pixels for ones to the left of a certain x-coordinate
+    x_threshold = 400
+    points = points[points[:, 0] < x_threshold]
+    # draw that threshold line
+    image = draw_vertical_line(image, x_threshold, color)
+    # TODO: also use the yellow line as a filter for the white line, so we are only looking at one white line
+    # maybe also use the inner white line, so less chance of failure
+    # draw the filtered points
+    image = draw_points(points, color, image)
+    # get the best fit line
+    coeffs = get_best_fit_line(points)
+    # plot the best fit line
+    image = plot_best_fit_line(coeffs, image, color)
+    # optionally, rotate the image back
+    image = rotate_image(image)
+    image = rotate_image(image)
+    image = rotate_image(image)
+    return image
+
 
 if __name__ == "__main__":
-    image = cv2.imread("camera/image05.png")
+    image = cv2.imread("camera/image03.png")
     image = undistort_image(image)
     image = project_image_to_ground(image)
     #image = draw_contour(Color.YELLOW, image)
-    yellow_mask = get_color_mask(Color.YELLOW, image)
-    white_mask = get_color_mask(Color.WHITE, image)
-    mask = combine_masks(yellow_mask, white_mask)
-    image = apply_mask(image, mask)
+    image = best_fit_line_rotated_filtered(Color.YELLOW, image)
+    image = best_fit_line_rotated_filtered(Color.WHITE, image)
+    #yellow_mask = get_color_mask(Color.YELLOW, image)
+    #print(type(yellow_mask))
+    #print(yellow_mask.shape)
+    #white_mask = get_color_mask(Color.WHITE, image)
+    #mask = combine_masks(yellow_mask, white_mask)
+    #image = apply_mask(image, mask)
     cv2.imshow("PNG Image", image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    #detect_lane_color(cv2.imread("camera/image01.png"))
