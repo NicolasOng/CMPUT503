@@ -110,6 +110,20 @@ class LaneDetectionNode(DTROS):
         
         return ground_point[:2]
 
+    def project_image_to_ground(self, image):
+        """
+        Applies the homography transformation to the entire image.
+        
+        :param image: Input cv2 image (numpy array).
+        :return: Warped image.
+        """
+        h, w = image.shape[:2]  # Get the height and width of the image
+
+        # Apply the homography transformation
+        warped_image = cv2.warpPerspective(image, self.homography, (w, h))
+
+        return warped_image
+
     """
     the l2 distance between two points
     """
@@ -329,8 +343,7 @@ class LaneDetectionNode(DTROS):
         cv2.putText(cv2_img, f'{left_yellow}, {right_yellow}', (int(mid_x), self.cam_y - 10), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, 
                             self.color_to_bgr[Color.YELLOW])
-        return cv2_imgdrive_until_blue
-
+        return cv2_img
     
     def detect_lane(self, **kwargs):
         # add your code here
@@ -356,6 +369,7 @@ class LaneDetectionNode(DTROS):
         self.camera_image = undistort_cv2_img
         # yellow balance
         #undistort_cv2_img = self.display_yellow_balance(undistort_cv2_img)
+        #undistort_cv2_img = self.project_image_to_ground(undistort_cv2_img)
 
 
 
