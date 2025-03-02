@@ -12,12 +12,14 @@ from enum import Enum
 '''
 
 w, h = 1200, 900
-translation = np.array([w / 2 - 50, 643], dtype=np.float32)
+translation = np.array([600-23, 647], dtype=np.float32)
 src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
 dst_pts = np.array([[0, 0], [186, 0], [0, 186], [186, 186]], dtype=np.float32)
 dst_pts = dst_pts + translation
 # this matrix makes it so 1px=1mm.
 # should be easy to find distances, just define 0, 0 to be way below the image, and everything is relative to that.
+# unfortunately, because teh calibration mat was not rotated correctly, the matrix also rotates the image a little.
+# I'm not gonna re-calibrate by hand.
 homography_to_ground, _ = cv2.findHomography(src_pts, dst_pts)
 
 class Color:
@@ -201,6 +203,14 @@ def combine_masks(mask1, mask2):
 def apply_mask(img, mask):
     return cv2.bitwise_and(img, img, mask=mask) 
 
+def project_point_to_ground(point):
+    '''
+    point is a tuple of (x, y) coordinates
+    '''
+    point = np.array([point], dtype=np.float32)
+    new_point = cv2.perspectiveTransform(point.reshape(-1, 1, 2), homography_to_ground)
+    return new_point.ravel()
+
 def project_image_to_ground(image):
     h, w = image.shape[:2]
 
@@ -218,6 +228,11 @@ def project_image_to_ground(image):
     warped_image = cv2.warpPerspective(image, homography_to_ground, (1200, 900), flags=cv2.INTER_CUBIC)
 
     return warped_image
+
+def project_image_from_ground(image):
+    homography_inv = np.linalg.inv(homography_to_ground)
+    image = cv2.warpPerspective(image, homography_inv, (640, 480), flags=cv2.INTER_CUBIC)
+    return image
 
 def draw_vertical_line(image, x, color):
     '''
@@ -309,10 +324,9 @@ def plot_errors_rotated(coeff_target, coeff_measured, image):
     # get the error
     errors = y_measured - y_target
     # plot the errors
-    for x, e in zip(x_values, errors):
-        x = int(x)
-        e = int(e)
-        cv2.line(image, (int(x), 600), (x, 600 + e), color=color_to_bgr[Color.RED], thickness=1)
+    for x, yt, ym in zip(x_values, y_target, y_measured):
+        x, yt, ym = int(x), int(yt), int(ym)
+        cv2.line(image, (x, yt), (x, ym), color=color_to_bgr[Color.RED], thickness=1)
     image = rotate_image(image)
     image = rotate_image(image)
     image = rotate_image(image)
@@ -320,18 +334,26 @@ def plot_errors_rotated(coeff_target, coeff_measured, image):
 
 if __name__ == "__main__":
     degree = 2
-    image = cv2.imread("camera/image02.png")
+    image = cv2.imread("camera/image05.png")
+    oh, ow = image.shape[:2]
+    print(oh, ow)
     image = undistort_image(image)
+    #'''
     image = project_image_to_ground(image)
     image, yellow_line = best_fit_line_rotated_filtered(Color.YELLOW, image, degree=degree)
     image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=True)
     measured_line = (np.array(yellow_line) + np.array(white_line)) / 2
     image = plot_best_fit_line_rotated(measured_line, image, Color.RED)
-    target_line = [0, 600]
+    target_line = [0.0753, 600] # gotten by projecting two points of the vertical in the original image to the ground, then finding its line. something like that.
+    #target_line = [0, 625]
     if degree == 2:
-        target_line = [0, 0, 600]
+        target_line = [0, 0.0753, 600]
+        #target_line = [0, 0, 625]
     image = plot_best_fit_line_rotated(target_line, image, Color.GREEN)
     image = plot_errors_rotated(target_line, measured_line, image)
+    image = project_image_from_ground(image)
+    #'''
     cv2.imshow("PNG Image", image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    # idea: start the move node in whatever file needs those commands.
