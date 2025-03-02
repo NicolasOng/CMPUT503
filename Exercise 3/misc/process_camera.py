@@ -16,6 +16,8 @@ translation = np.array([w / 2 - 50, 643], dtype=np.float32)
 src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
 dst_pts = np.array([[0, 0], [186, 0], [0, 186], [186, 186]], dtype=np.float32)
 dst_pts = dst_pts + translation
+# this matrix makes it so 1px=1mm.
+# should be easy to find distances, just define 0, 0 to be way below the image, and everything is relative to that.
 homography_to_ground, _ = cv2.findHomography(src_pts, dst_pts)
 
 class Color:
@@ -24,6 +26,7 @@ class Color:
     GREEN = 2
     YELLOW = 3
     WHITE = 4
+    BLACK = 5
 
 # color detection parameters in HSV format
 red_lower = np.array([136, 87, 111], np.uint8) 
@@ -47,6 +50,7 @@ color_to_bgr = {
         Color.GREEN: (0, 255, 0),
         Color.WHITE: (255, 255, 255),
         Color.YELLOW: (0, 255, 255),
+        Color.BLACK: (0, 0, 0),
     }  
 
 color_to_str = {
@@ -163,14 +167,16 @@ def draw_points(points, color, cv2_img):
         cv2.circle(cv2_img, (int(x), int(y)), radius=2, color=color_to_bgr[color], thickness=-1)
     return cv2_img
 
-def get_best_fit_line(points):
+def get_best_fit_line(points, degree=1):
     x = points[:, 0].flatten()
     y = points[:, 1].flatten()
 
-    coeffs = np.polyfit(x, y, 1)
+    coeffs = np.polyfit(x, y, degree)
 
-    #print(f"Best-fit curve: y = {coeffs[0]:.3f}x² + {coeffs[1]:.3f}x + {coeffs[2]:.3f}")
-    print(f"Best-fit line: y = {coeffs[0]:.3f}x + {coeffs[1]:.3f}")
+    if degree == 1:
+        print(f"Best-fit line: y = {coeffs[0]:.3f}x + {coeffs[1]:.3f}")
+    elif degree == 2:
+        print(f"Best-fit curve: y = {coeffs[0]:.3f}x² + {coeffs[1]:.3f}x + {coeffs[2]:.3f}")
 
     return coeffs
 
@@ -184,6 +190,7 @@ def plot_best_fit_line(coeffs, cv2_img, color):
     curve_points = np.column_stack((x_fit, y_fit)).astype(np.int32)
 
     # Draw the curve on the OpenCV image
+    cv2.polylines(cv2_img, [curve_points], isClosed=False, color=color_to_bgr[Color.BLACK], thickness=6)
     cv2.polylines(cv2_img, [curve_points], isClosed=False, color=color_to_bgr[color], thickness=2)
 
     return cv2_img
@@ -226,7 +233,7 @@ def draw_horizontal_line(image, y, color):
     cv2.line(image, (0, y), (image.shape[1], y), color=color_to_bgr[color], thickness=2)
     return image
 
-def best_fit_line_rotated_filtered(color, image):
+def best_fit_line_rotated_filtered(color, image, degree=1, div_coeffs=None, above=False):
     '''
     this function gets and draws the best fit line for the given color,
     but in a rotated image, since we mostly deal with vertical lines
@@ -242,34 +249,89 @@ def best_fit_line_rotated_filtered(color, image):
     points = points[points[:, 0] < x_threshold]
     # draw that threshold line
     image = draw_vertical_line(image, x_threshold, color)
-    # TODO: also use the yellow line as a filter for the white line, so we are only looking at one white line
-    # maybe also use the inner white line, so less chance of failure
+    # can also use the yellow line as a filter for the white line,
+    # so we are only looking at one side of the yellow line
+    if div_coeffs is not None:
+        # get the yellow line
+        x_values = points[:, 0]
+        y_poly = np.polyval(div_coeffs, x_values)
+        # filter for points on either side of the line
+        if above:
+            points = points[points[:, 1] >= y_poly]
+        else:
+            points = points[points[:, 1] <= y_poly]
     # draw the filtered points
     image = draw_points(points, color, image)
     # get the best fit line
-    coeffs = get_best_fit_line(points)
+    coeffs = get_best_fit_line(points, degree=degree)
     # plot the best fit line
     image = plot_best_fit_line(coeffs, image, color)
     # optionally, rotate the image back
     image = rotate_image(image)
     image = rotate_image(image)
     image = rotate_image(image)
+    return image, coeffs
+
+def plot_best_fit_line_rotated(coeffs, image, color):
+    '''
+    this function plots the best fit line in the rotated image
+    '''
+    image = rotate_image(image)
+    image = plot_best_fit_line(coeffs, image, color)
+    image = rotate_image(image)
+    image = rotate_image(image)
+    image = rotate_image(image)
     return image
 
+def get_mse(coeff_target, coeff_measured):
+    '''
+    this function calculates the mean squared error between two lines
+    '''
+    # get x-values for the bottom half of the image
+    x_values = np.linspace(400, h, 100)
+    # get y-values for both lines
+    y_target = np.polyval(coeff_target, x_values)
+    y_measured = np.polyval(coeff_measured, x_values)
+    # Compute Mean Squared Error (MSE)
+    mse = np.mean((y_measured - y_target) ** 2)
+    return mse
+
+def plot_errors_rotated(coeff_target, coeff_measured, image):
+    '''
+    this function plots the error between the target line and the measured line
+    '''
+    image = rotate_image(image)
+    # get x-values for the bottom half of the image
+    x_values = np.linspace(0, 400, 100)
+    # get y-values for both lines
+    y_target = np.polyval(coeff_target, x_values)
+    y_measured = np.polyval(coeff_measured, x_values)
+    # get the error
+    errors = y_measured - y_target
+    # plot the errors
+    for x, e in zip(x_values, errors):
+        x = int(x)
+        e = int(e)
+        cv2.line(image, (int(x), 600), (x, 600 + e), color=color_to_bgr[Color.RED], thickness=1)
+    image = rotate_image(image)
+    image = rotate_image(image)
+    image = rotate_image(image)
+    return image
 
 if __name__ == "__main__":
-    image = cv2.imread("camera/image03.png")
+    degree = 2
+    image = cv2.imread("camera/image02.png")
     image = undistort_image(image)
     image = project_image_to_ground(image)
-    #image = draw_contour(Color.YELLOW, image)
-    image = best_fit_line_rotated_filtered(Color.YELLOW, image)
-    image = best_fit_line_rotated_filtered(Color.WHITE, image)
-    #yellow_mask = get_color_mask(Color.YELLOW, image)
-    #print(type(yellow_mask))
-    #print(yellow_mask.shape)
-    #white_mask = get_color_mask(Color.WHITE, image)
-    #mask = combine_masks(yellow_mask, white_mask)
-    #image = apply_mask(image, mask)
+    image, yellow_line = best_fit_line_rotated_filtered(Color.YELLOW, image, degree=degree)
+    image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=True)
+    measured_line = (np.array(yellow_line) + np.array(white_line)) / 2
+    image = plot_best_fit_line_rotated(measured_line, image, Color.RED)
+    target_line = [0, 600]
+    if degree == 2:
+        target_line = [0, 0, 600]
+    image = plot_best_fit_line_rotated(target_line, image, Color.GREEN)
+    image = plot_errors_rotated(target_line, measured_line, image)
     cv2.imshow("PNG Image", image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
