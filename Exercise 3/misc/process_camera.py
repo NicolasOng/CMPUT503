@@ -11,8 +11,10 @@ from enum import Enum
 584, 375 - 186, -186
 '''
 
-w, h = 1200, 900
-translation = np.array([600-23, 647], dtype=np.float32)
+cam_w, cam_h = 640, 480
+ground_w, ground_h = 270, 900 # 1200, 900 - min_w is ~270, 
+# the translation is hand-calibrated so that the image is centered/touches the bottom of the image
+translation = np.array([(ground_w / 2) - 24, ground_h - 255], dtype=np.float32)
 src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
 dst_pts = np.array([[0, 0], [186, 0], [0, 186], [186, 186]], dtype=np.float32)
 dst_pts = dst_pts + translation
@@ -212,20 +214,8 @@ def project_point_to_ground(point):
     return new_point.ravel()
 
 def project_image_to_ground(image):
-    h, w = image.shape[:2]
-
-    # Compute new bounding box size after transformation (optional)
-    corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
-    new_corners = cv2.perspectiveTransform(corners.reshape(-1, 1, 2), homography_to_ground)
-    
-    # Compute the new width and height
-    x_min, y_min = new_corners.min(axis=0).ravel()
-    x_max, y_max = new_corners.max(axis=0).ravel()
-    
-    new_w, new_h = int(x_max - x_min), int(y_max - y_min)
-
     # Apply perspective warp
-    warped_image = cv2.warpPerspective(image, homography_to_ground, (1200, 900), flags=cv2.INTER_CUBIC)
+    warped_image = cv2.warpPerspective(image, homography_to_ground, (ground_w, ground_h), flags=cv2.INTER_CUBIC)
 
     return warped_image
 
@@ -248,6 +238,16 @@ def draw_horizontal_line(image, y, color):
     cv2.line(image, (0, y), (image.shape[1], y), color=color_to_bgr[color], thickness=2)
     return image
 
+def filter_points_in_circle(points, center, radius):
+    """
+    Filters points that fall inside a given circle.
+    NOTE: Broken - no idea why
+    """
+    points = points.astype(float)  # Ensure float precision
+    center = np.array([center] * points.shape[0], dtype=float)  # Convert center to NumPy array
+    distances = np.linalg.norm(points - center, axis=1)
+    return points[distances <= radius]
+
 def best_fit_line_rotated_filtered(color, image, degree=1, div_coeffs=None, above=False):
     '''
     this function gets and draws the best fit line for the given color,
@@ -264,6 +264,8 @@ def best_fit_line_rotated_filtered(color, image, degree=1, div_coeffs=None, abov
     points = points[points[:, 0] < x_threshold]
     # draw that threshold line
     image = draw_vertical_line(image, x_threshold, color)
+    #points = filter_points_in_circle(points, (ground_h / 2 + 50, ground_w / 2 + 100), 400)
+    #print(points)
     # can also use the yellow line as a filter for the white line,
     # so we are only looking at one side of the yellow line
     if div_coeffs is not None:
@@ -276,6 +278,7 @@ def best_fit_line_rotated_filtered(color, image, degree=1, div_coeffs=None, abov
         else:
             points = points[points[:, 1] <= y_poly]
     # draw the filtered points
+    print(points)
     image = draw_points(points, color, image)
     # get the best fit line
     coeffs = get_best_fit_line(points, degree=degree)
@@ -332,26 +335,72 @@ def plot_errors_rotated(coeff_target, coeff_measured, image):
     image = rotate_image(image)
     return image
 
+def draw_grid(image):
+    # Define image width and height
+    h, w = image.shape[:2]
+
+    # Define grid properties
+    num_cells_x = 50  # Number of columns
+    num_cells_y = 50  # Number of rows
+
+    # Calculate step sizes
+    dx = w // num_cells_x
+    dy = h // num_cells_y
+
+    # Draw vertical lines
+    for x in range(0, w, dx):
+        cv2.line(image, (x, 0), (x, h), (0, 0, 0), 3)  # Black lines
+
+    # Draw horizontal lines
+    for y in range(0, h, dy):
+        cv2.line(image, (0, y), (w, y), (0, 0, 0), 3)  # Black lines
+
+def point_projection_test():
+    points = np.random.randint(0, min(cam_w, cam_h), size=(20, 2))
+    projected_points = np.array([project_point_to_ground(p) for p in points])
+    return points, projected_points
+
+'''
+def draw_points(image, points, color):
+    print(points)
+    for point in points:
+        x = int(point[0])
+        y = int(point[1])
+        cv2.circle(image, (x, y), 5, color_to_bgr[color], -1)
+'''
+
+def project_bounding_box_to_ground(bounding_box):
+    '''
+    bounding_box is a tuple of (x, y, w, h) coordinates
+    '''
+    x, y, w, h = bounding_box
+    points = np.array([[x, y], [x + w, y], [x, y + h], [x + w, y + h]], dtype=np.float32)
+    new_points = cv2.perspectiveTransform(points.reshape(-1, 1, 2), homography_to_ground)
+    return new_points.reshape(-1, 2)
+
 if __name__ == "__main__":
     degree = 2
-    image = cv2.imread("camera/image05.png")
+    image = cv2.imread("camera/image04.png")
     oh, ow = image.shape[:2]
-    print(oh, ow)
     image = undistort_image(image)
     #'''
     image = project_image_to_ground(image)
+    #'''
     image, yellow_line = best_fit_line_rotated_filtered(Color.YELLOW, image, degree=degree)
     image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=True)
     measured_line = (np.array(yellow_line) + np.array(white_line)) / 2
     image = plot_best_fit_line_rotated(measured_line, image, Color.RED)
-    target_line = [0.0753, 600] # gotten by projecting two points of the vertical in the original image to the ground, then finding its line. something like that.
+    target_line = [0.0753, ground_w / 2] # gotten by projecting two points of the vertical in the original image to the ground, then finding its line. something like that.
     #target_line = [0, 625]
     if degree == 2:
-        target_line = [0, 0.0753, 600]
+        target_line = [0, 0.0753, ground_w / 2]
         #target_line = [0, 0, 625]
     image = plot_best_fit_line_rotated(target_line, image, Color.GREEN)
     image = plot_errors_rotated(target_line, measured_line, image)
+    #'''
     image = project_image_from_ground(image)
+    draw_vertical_line(image, int(cam_w/2), Color.BLUE)
+    
     #'''
     cv2.imshow("PNG Image", image)
     cv2.waitKey(0)
