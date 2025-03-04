@@ -53,7 +53,7 @@ class CameraDetectionNode(DTROS):
         self.color_coords_topic = rospy.Publisher(f"/{self.vehicle_name}/color_coords", String, queue_size=1)
 
         # degree for best fit lines
-        self.degree = 1
+        self.degree = 2
 
         # color detection parameters in HSV format
         self.red_lower = np.array([136, 87, 111], np.uint8)
@@ -68,8 +68,8 @@ class CameraDetectionNode(DTROS):
         self.yellow_lower = np.array([21, 100, 60*2.55], np.uint8)
         self.yellow_higher = np.array([33, 255, 100*2.55], np.uint8)
 
-        self.white_lower = np.array([0, 0, 200], np.uint8)  # for white. any value of Hue works. just maximum brighteness
-        self.white_higher = np.array([170, 25, 255], np.uint8)
+        self.white_lower = np.array([0, 0, 180], np.uint8)
+        self.white_higher = np.array([180, 50, 255], np.uint8)
 
         # color bounds
         self.color_bounds = {
@@ -103,7 +103,7 @@ class CameraDetectionNode(DTROS):
         self.mae_topic = rospy.Publisher(f"/{self.vehicle_name}/maes", String, queue_size=1)
 
         # which error lines to render
-        self.error_lines = "yellow"
+        self.error_lines = "mid_lane" # yellow or mid_line
 
         # topic to publish projected and unprojected image
         self.projected_image_topic = rospy.Publisher(f"/{self.vehicle_name}/projected_image", Image, queue_size=1)
@@ -458,9 +458,10 @@ class CameraDetectionNode(DTROS):
             self.draw_projected_bounding_box(image, red_bb_p, red_center_p, red_coords, Color.RED)
             self.draw_projected_bounding_box(image, blue_bb_p, blue_center_p, blue_coords, Color.BLUE)
             self.draw_projected_bounding_box(image, green_bb_p, green_center_p, green_coords, Color.GREEN)
-            # draw the 2 error values
+            # crop and draw the 2 error values
+            image = image[int(self.ground_h * 0.3):int(self.ground_h), int(0):int(self.ground_w)]
             self.draw_MAE_values(image, yellow_mae, mid_lane_mae)
-            # publish the projected image
+            # crop and publish the projected image
             self.projected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             # un-project the image copy to the camera frame
             image = projected_image
