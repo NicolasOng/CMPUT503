@@ -65,6 +65,12 @@ class CameraDetectionNode(DTROS):
         self.blue_lower = np.array([110, 80, 120], np.uint8)
         self.blue_upper = np.array([130, 255, 255], np.uint8)
 
+        self.yellow_lower = np.array([21, 100, 60*2.55], np.uint8)
+        self.yellow_higher = np.array([33, 255, 100*2.55], np.uint8)
+
+        self.white_lower = np.array([0, 0, 200], np.uint8)  # for white. any value of Hue works. just maximum brighteness
+        self.white_higher = np.array([170, 25, 255], np.uint8)
+
         # color bounds
         self.color_bounds = {
             Color.RED: (self.red_lower, self.red_upper),
@@ -85,6 +91,7 @@ class CameraDetectionNode(DTROS):
             Color.GREEN: (0, 255, 0),
             Color.WHITE: (255, 255, 255),
             Color.YELLOW: (0, 255, 255),
+            Color.BLACK: (0, 0, 0),
         }
 
         # target line for MAE calculation
@@ -114,7 +121,18 @@ class CameraDetectionNode(DTROS):
         newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.cam_matrix, self.dist_coeff, (w,h), 0, (w,h))
 
         # undistorted image using calibration parameters
-        cv2.undistort(cv2_img, self.cam_matrix, self.dist_coeff, None)
+        return cv2.undistort(cv2_img, self.cam_matrix, self.dist_coeff, None)
+
+    def get_contours(self, color_mask):
+        '''
+        using the color mask, we can get the contours of the color
+        the contours are the edges of the color, defined by a list of points
+        contours is a tuple of ndarrays of shape (n, 1, 2)
+        '''
+        contours, hierarchy = cv2.findContours(color_mask, 
+                                            cv2.RETR_TREE, 
+                                            cv2.CHAIN_APPROX_SIMPLE)
+        return contours, hierarchy
     
     def get_distance(self, point1, point2):
         x1, y1 = point1
@@ -134,7 +152,7 @@ class CameraDetectionNode(DTROS):
             if (area > 300): 
                 x, y, w, h = cv2.boundingRect(contour)
                 contour_center = (x + w / 2, y + h / 2)
-                distance = self.get_distance((self.cam_x / 2, self.cam_y), contour_center)
+                distance = self.get_distance((self.cam_w / 2, self.cam_h), contour_center)
                 if distance < nearest_distance:
                     nearest_distance = distance
                     nearest_bb = (x, y, w, h)
@@ -142,7 +160,7 @@ class CameraDetectionNode(DTROS):
     
     def project_image_to_ground(self, image):
         # Apply perspective warp
-        cv2.warpPerspective(image, self.homography_to_ground, (self.ground_w, self.ground_h), flags=cv2.INTER_CUBIC)
+        return cv2.warpPerspective(image, self.homography_to_ground, (self.ground_w, self.ground_h), flags=cv2.INTER_CUBIC)
 
     def project_point_to_ground(self, point):
         '''
@@ -157,6 +175,7 @@ class CameraDetectionNode(DTROS):
         bounding_box is a tuple of (x, y, w, h) coordinates
         output is a list of 4 points in the ground plane
         '''
+        if not bounding_box: return None
         x, y, w, h = bounding_box
         points = np.array([[x, y], [x + w, y], [x, y + h], [x + w, y + h]], dtype=np.float32)
         new_points = cv2.perspectiveTransform(points.reshape(-1, 1, 2), self.homography_to_ground)
@@ -166,13 +185,15 @@ class CameraDetectionNode(DTROS):
         '''
         this function rotates the image 90 degrees clockwise
         '''
-        cv2.transpose(image)
-        cv2.flip(image, flipCode=1)
+        image = cv2.transpose(image)
+        image = cv2.flip(image, flipCode=1)
+        return image
     
     def rotate_image_back(self, image):
-        self.rotate_image(image)
-        self.rotate_image(image)
-        self.rotate_image(image)
+        image = self.rotate_image(image)
+        image = self.rotate_image(image)
+        image = self.rotate_image(image)
+        return image
     
     def get_color_mask(self, color: Color, cv2_img):
         '''
@@ -228,7 +249,7 @@ class CameraDetectionNode(DTROS):
         also filters out points that are farther in the distance from the camera
         '''
         # rotate the image 90 degrees clockwise
-        self.rotate_image(image)
+        image = self.rotate_image(image)
         # get the color mask pixels
         points = self.get_color_mask_pixel_list(color, image)
         # filter the pixels for ones below a certain threshold
@@ -247,10 +268,12 @@ class CameraDetectionNode(DTROS):
         # draw the filtered points
         self.draw_points(points, color, image)
         # get the best fit line
-        coeffs = self.get_best_fit_line(points, degree=self.degree)
+        coeffs = None
+        if points.size != 0:
+            coeffs = self.get_best_fit_line(points, degree=self.degree)
         # rotate the image back
-        self.rotate_image_back(image)
-        return coeffs
+        image = self.rotate_image_back(image)
+        return image, coeffs
     
     def get_mae(self, coeff_target, coeff_measured):
         '''
@@ -271,7 +294,7 @@ class CameraDetectionNode(DTROS):
         '''
         this function plots the error between the target line and the measured line
         '''
-        self.rotate_image(image)
+        image = self.rotate_image(image)
         # get x-values for the bottom half of the image
         x_values = np.linspace(0, self.point_threshold, 100)
         # get y-values for both lines
@@ -281,7 +304,8 @@ class CameraDetectionNode(DTROS):
         for x, yt, ym in zip(x_values, y_target, y_measured):
             x, yt, ym = int(x), int(yt), int(ym)
             cv2.line(image, (x, yt), (x, ym), color=self.color_to_bgr[Color.RED], thickness=1)
-        self.rotate_image_back(image)
+        image = self.rotate_image_back(image)
+        return image
     
     def plot_best_fit_line(self, coeffs, image, color):
         # Generate x and y values for plotting in image
@@ -299,9 +323,11 @@ class CameraDetectionNode(DTROS):
         '''
         this function plots the best fit line in the rotated image
         '''
-        self.rotate_image(image)
+        if coeffs is None or len(coeffs) == 0: return image
+        image = self.rotate_image(image)
         self.plot_best_fit_line(coeffs, image, color)
-        self.rotate_image_back(image)
+        image = self.rotate_image_back(image)
+        return image
 
     def draw_polygon(self, image, points, color):
         '''
@@ -315,7 +341,9 @@ class CameraDetectionNode(DTROS):
         '''
         this function draws the projected bounding box and the ground x, y coordinates
         '''
+        if points is None or points.size == 0: return
         # draw the bounding box
+        points = points.astype(np.int32).reshape((-1, 1, 2))
         self.draw_polygon(image, points, color)
         # draw the center
         cv2.circle(image, (int(center[0]), int(center[1])), radius=2, color=self.color_to_bgr[color], thickness=-1)
@@ -331,13 +359,13 @@ class CameraDetectionNode(DTROS):
 
     def project_image_from_ground(self, image):
         homography_inv = np.linalg.inv(self.homography_to_ground)
-        image = cv2.warpPerspective(image, homography_inv, (640, 480), flags=cv2.INTER_CUBIC)
-        return image
+        return cv2.warpPerspective(image, homography_inv, (640, 480), flags=cv2.INTER_CUBIC)
     
     def draw_bounding_box(self, image, bb, center, coords, color):
         '''
         this function draws the bounding box and the ground x, y coordinates
         '''
+        if bb is None: return
         # draw the bounding box
         x, y, w, h = bb
         cv2.rectangle(image, (x, y), (x + w, y + h), self.color_to_bgr[color], 2) 
@@ -353,7 +381,7 @@ class CameraDetectionNode(DTROS):
             # create a copy of the camera image
             image = self.camera_image.copy()
             # undistort camera image
-            self.undistort_image(image)
+            image = self.undistort_image(image)
             # get the nearest bounding boxes for red, blue, and green
             red_bb = self.get_nearest_bounding_box(Color.RED, image)
             blue_bb = self.get_nearest_bounding_box(Color.BLUE, image)
@@ -368,7 +396,7 @@ class CameraDetectionNode(DTROS):
             if green_bb is not None:
                 green_center = (green_bb[0] + green_bb[2] / 2, green_bb[1] + green_bb[3] / 2)
             # project the image to the ground
-            self.project_image_to_ground(image)
+            image = self.project_image_to_ground(image)
             # project the centers (and bounding boxes) to the ground
             red_center_p = self.project_point_to_ground(red_center)
             blue_center_p = self.project_point_to_ground(blue_center)
@@ -392,16 +420,21 @@ class CameraDetectionNode(DTROS):
             self.color_coords_topic.publish(json_coords)
             # perform yellow line detection - get the coefficients
             # also draws the points used
-            yellow_line = self.get_best_fit_line_full(Color.YELLOW, image)
+            image, yellow_line = self.get_best_fit_line_full(Color.YELLOW, image)
             # perform white line detection - get the coefficients
             # also draws the points used
-            white_line = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=yellow_line)
+            white_line = None
+            if yellow_line is not None and yellow_line.size > 0:
+                image, white_line = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=yellow_line)
             # get the mid-lane line coefficients
-            mid_lane_line = (np.array(yellow_line) + np.array(white_line)) / 2
-            # calculate the MAE between the yellow line and the target line
-            yellow_mae = self.get_mae(self.target_line, yellow_line)
-            # calculate MAE between the mid-lane line and the target line
-            mid_lane_mae = self.get_mae(self.target_line, mid_lane_line)
+            mid_lane_line = None
+            yellow_mae, mid_lane_mae = -1, -1
+            if white_line is not None and white_line.size > 0:
+                mid_lane_line = (np.array(yellow_line) + np.array(white_line)) / 2
+                # calculate the MAE between the yellow line and the target line
+                yellow_mae = self.get_mae(self.target_line, yellow_line)
+                # calculate MAE between the mid-lane line and the target line
+                mid_lane_mae = self.get_mae(self.target_line, mid_lane_line)
             # publish the MAEs
             maes = {
                 "yellow": yellow_mae,
@@ -410,15 +443,15 @@ class CameraDetectionNode(DTROS):
             json_maes = json.dumps(maes)
             self.mae_topic.publish(json_maes)
             # draw the error lines (either yellow or mid-lane)
-            if self.error_lines == "yellow":
-                self.plot_errors(self.target_line, yellow_line, image)
-            else:
-                self.plot_errors(self.target_line, mid_lane_line, image)
-            # draw the yellow, white, mid-lane (blue), and target (green) lines - rotate!
-            self.plot_best_fit_line_full(yellow_line, image, Color.YELLOW)
-            self.plot_best_fit_line_full(white_line, image, Color.WHITE)
-            self.plot_best_fit_line_full(mid_lane_line, image, Color.BLUE)
-            self.plot_best_fit_line_full(self.target_line, image, Color.GREEN)
+            if self.error_lines == "yellow" and yellow_line is not None and yellow_line.size > 0:
+                image = self.plot_errors(self.target_line, yellow_line, image)
+            elif mid_lane_line is not None and mid_lane_line.size > 0:
+                image = self.plot_errors(self.target_line, mid_lane_line, image)
+            # draw the yellow, white, mid-lane (blue), and target (green) lines
+            image = self.plot_best_fit_line_full(yellow_line, image, Color.YELLOW)
+            image = self.plot_best_fit_line_full(white_line, image, Color.WHITE)
+            image = self.plot_best_fit_line_full(mid_lane_line, image, Color.BLUE)
+            image = self.plot_best_fit_line_full(self.target_line, image, Color.GREEN)
             # make a copy of the image - save this for un-projection later.
             projected_image = image.copy()
             # draw the projected color bounding boxes and their calculated ground x, y coordinates
@@ -431,7 +464,7 @@ class CameraDetectionNode(DTROS):
             self.projected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             # un-project the image copy to the camera frame
             image = projected_image
-            self.project_image_from_ground(image)
+            image = self.project_image_from_ground(image)
             # draw the color bounding boxes and their calculated ground x, y coordinates
             self.draw_bounding_box(image, red_bb, red_center, red_coords, Color.RED)
             self.draw_bounding_box(image, green_bb, green_center, green_coords, Color.GREEN)

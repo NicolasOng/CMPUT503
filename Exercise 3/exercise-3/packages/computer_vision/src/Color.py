@@ -6,3 +6,4 @@ class Color:
     GREEN = 2
     YELLOW = 3
     WHITE = 4
+    BLACK = 5

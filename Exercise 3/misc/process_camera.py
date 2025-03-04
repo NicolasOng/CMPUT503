@@ -12,7 +12,7 @@ from enum import Enum
 '''
 
 cam_w, cam_h = 640, 480
-ground_w, ground_h = 270, 900 # 1200, 900 - min_w is ~270, 
+ground_w, ground_h = 1200, 900 # 1200, 900 - min_w is ~270, 
 # the translation is hand-calibrated so that the image is centered/touches the bottom of the image
 translation = np.array([(ground_w / 2) - 24, ground_h - 255], dtype=np.float32)
 src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
@@ -380,12 +380,10 @@ def project_bounding_box_to_ground(bounding_box):
 
 if __name__ == "__main__":
     degree = 2
-    image = cv2.imread("camera/image04.png")
+    image = cv2.imread("camera/image05.png")
     oh, ow = image.shape[:2]
     image = undistort_image(image)
-    #'''
     image = project_image_to_ground(image)
-    #'''
     image, yellow_line = best_fit_line_rotated_filtered(Color.YELLOW, image, degree=degree)
     image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=True)
     measured_line = (np.array(yellow_line) + np.array(white_line)) / 2
@@ -397,9 +395,8 @@ if __name__ == "__main__":
         #target_line = [0, 0, 625]
     image = plot_best_fit_line_rotated(target_line, image, Color.GREEN)
     image = plot_errors_rotated(target_line, measured_line, image)
-    #'''
     image = project_image_from_ground(image)
-    draw_vertical_line(image, int(cam_w/2), Color.BLUE)
+    #draw_vertical_line(image, int(cam_w/2), Color.BLUE)
     
     #'''
     cv2.imshow("PNG Image", image)
