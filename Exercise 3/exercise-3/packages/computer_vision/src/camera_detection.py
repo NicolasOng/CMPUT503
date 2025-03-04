@@ -53,7 +53,7 @@ class CameraDetectionNode(DTROS):
         self.color_coords_topic = rospy.Publisher(f"/{self.vehicle_name}/color_coords", String, queue_size=1)
 
         # degree for best fit lines
-        self.degree = 2
+        self.degree = 1
 
         # color detection parameters in HSV format
         self.red_lower = np.array([136, 87, 111], np.uint8)
@@ -287,7 +287,7 @@ class CameraDetectionNode(DTROS):
         # Compute Mean Squared Error (MSE)
         #mse = np.mean((y_measured - y_target) ** 2)
         # compute Mean Absolute Error (MAE)
-        mae = np.mean(np.abs(y_measured - y_target))
+        mae = np.mean(y_measured - y_target)
         return mae
     
     def plot_errors(self, coeff_target, coeff_measured, image):
