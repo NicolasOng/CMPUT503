@@ -19,9 +19,6 @@ class PIDController(DTROS):
         super(PIDController, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
-        # move node
-        self.move = None
-
         # maes subscriber
         self.maes = None
         self.camera_sub = rospy.Subscriber(f"/{self.vehicle_name}/maes", String, self.maes_callback)
@@ -105,7 +102,6 @@ class PIDController(DTROS):
         pass
 
 if __name__ == '__main__':
-    # create the nodes
     node = PIDController(node_name='color_based_movement_node')
     rospy.sleep(2)
     node.straight_line()

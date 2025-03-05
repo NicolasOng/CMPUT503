@@ -6,6 +6,7 @@ import rospy
 from duckietown.dtros import DTROS, NodeType
 from duckietown_msgs.msg import Pose2DStamped, WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
 from std_msgs.msg import ColorRGBA, String
+from std_srvs.srv import SetString, SetStringResponse
 import math
 import time
 import numpy as np
@@ -30,6 +31,12 @@ class MoveNode(DTROS):
         #self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
         self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise3/odometry', String, queue_size=10)
+
+        # Services
+        self.service_drive_straight = rospy.Service(f'/{self.vehicle_name}/drive_straight', SetString, self.drive_straight_request)
+        self.service_rotate = rospy.Service(f'/{self.vehicle_name}/rotate', SetString, self.rotate_request)
+        self.service_drive_arc = rospy.Service(f'/{self.vehicle_name}/drive_arc', SetString, self.drive_arc_request)
+        self.service_pause = rospy.Service(f'/{self.vehicle_name}/pause', SetString, self.pause_request)
 
         # variables for odometry
         self.xpos = 0
@@ -135,12 +142,13 @@ class MoveNode(DTROS):
             ptime = cur_time
             rate.sleep()
     
-    def drive_straight(self, meters, speed):
+    def drive_straight(self, meters, speed, leds=False):
         '''
         meters should be positive
         speed can be positive for forwards,
         negative for backwards
         '''
+        if leds: self.command_leds_color(ColorRGBA(r=47, g=255, b=0, a=255))
         starting_cpos = self.cpos
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
@@ -150,13 +158,15 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
         self.set_velocities(0, 0)
+        if leds: self.command_leds_default()
     
-    def rotate(self, radians, speed):
+    def rotate(self, radians, speed, leds=False):
         '''
         radians should be positive.
         speed can be positive for clockwise,
         negative for counter-clockwise
         '''
+        if leds: self.command_leds_color(ColorRGBA(r=0, g=174, b=255, a=255))
         starting_ctheta = self.ctheta
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
@@ -166,14 +176,16 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
         self.set_velocities(0, 0)
+        if leds: self.command_leds_default()
         
-    def drive_arc(self, distance, theta, speed):
+    def drive_arc(self, distance, theta, speed, leds=False):
         '''
         arc in [-1, 1], where -1 is full left turn, 1 is full right turn
         0 is straight
         distance should be positive
         speed should be in [-1, 1]
         '''
+        if leds: self.command_leds_color(ColorRGBA(r=208, g=0, b=255, a=255))
         starting_cpos = self.cpos
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
@@ -183,11 +195,13 @@ class MoveNode(DTROS):
                 break
             rate.sleep()
         self.set_velocities(0, 0)
+        if leds: self.command_leds_default()
 
-    def pause(self, seconds):
+    def pause(self, seconds, leds=False):
         '''
         seconds should be positive
         '''
+        if leds: self.command_leds_color(ColorRGBA(r=255, g=81, b=0, a=255))
         rate = rospy.Rate(10)
         start_time = rospy.Time.now()
         while not rospy.is_shutdown():
@@ -196,6 +210,7 @@ class MoveNode(DTROS):
             if (cur_time - start_time).to_sec() >= seconds:
                 break
             rate.sleep()
+        if leds: self.command_leds_default()
 
     def command_leds_all(self, colors):
         '''
@@ -236,6 +251,30 @@ class MoveNode(DTROS):
         rotational = radians/s
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
+    
+    def drive_straight_request(self, req):
+        params = json.loads(req.data)
+        meters, speed, leds = params['meters'], params['speed'], params['leds']
+        self.drive_straight(meters, speed, leds)
+        return SetStringResponse(success=True, message=f"Drove straight for {meters}m at speed {speed}m/s!")
+    
+    def rotate_request(self, req):
+        params = json.loads(req.data)
+        radians, speed, leds = params['radians'], params['speed'], params['leds']
+        self.rotate(radians, speed, leds)
+        return SetStringResponse(success=True, message=f"Rotated for {radians}rad at speed {speed}rad/s!")
+    
+    def drive_arc_request(self, req):
+        params = json.loads(req.data)
+        distance, theta, speed, leds = params['distance'], params['theta'], params['speed'], params['leds']
+        self.drive_arc(distance, theta, speed, leds)
+        return SetStringResponse(success=True, message=f"Drove in an arc for {distance}m, with rotational velocity of {theta}rad/s, with speed {speed}m/s!")
+    
+    def pause_request(self, req):
+        params = json.loads(req.data)
+        seconds, leds = params['seconds'], params['leds']
+        self.pause(seconds, leds)
+        return SetStringResponse(success=True, message=f"Paused for {seconds}s!")
 
     def straight_line_task(self):
         self.drive_straight(1.25, 0.4)
