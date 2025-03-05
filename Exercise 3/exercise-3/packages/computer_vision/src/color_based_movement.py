@@ -31,6 +31,7 @@ class ColorBasedMovement(DTROS):
         self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
         self.drive_arc_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_arc', SetString)
         self.pause_request = rospy.ServiceProxy(f'/{self.vehicle_name}/pause', SetString)
+        self.drive_turn_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_turn', SetString)
         
         # car command publisher
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
@@ -99,6 +100,16 @@ class ColorBasedMovement(DTROS):
         }
         params_json = json.dumps(params)
         self.drive_arc_request(params_json)
+
+    def drive_turn(self, angle, theta, speed, leds=False):
+        params = {
+            "angle": angle,
+            "theta": theta,
+            "speed": speed,
+            "leds": leds
+        }
+        params_json = json.dumps(params)
+        self.drive_turn_request(params_json)
 
     def pause(self, seconds, leds=False):
         params = {

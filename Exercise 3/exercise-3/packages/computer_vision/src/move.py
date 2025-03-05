@@ -38,6 +38,7 @@ class MoveNode(DTROS):
         self.service_rotate = rospy.Service(f'/{self.vehicle_name}/rotate', SetString, self.rotate_request)
         self.service_drive_arc = rospy.Service(f'/{self.vehicle_name}/drive_arc', SetString, self.drive_arc_request)
         self.service_pause = rospy.Service(f'/{self.vehicle_name}/pause', SetString, self.pause_request)
+        self.service_drive_turn = rospy.Service(f'/{self.vehicle_name}/drive_turn', SetString, self.drive_turn_request)
 
         # variables for odometry
         self.xpos = 0
@@ -181,7 +182,7 @@ class MoveNode(DTROS):
         
     def drive_arc(self, distance, theta, speed, leds=False):
         '''
-        arc in [-1, 1], where -1 is full left turn, 1 is full right turn
+        theta in radians/s, where -1 is left turn, 1 is right turn
         0 is straight
         distance should be positive
         speed should be in [-1, 1]
@@ -211,6 +212,25 @@ class MoveNode(DTROS):
             if (cur_time - start_time).to_sec() >= seconds:
                 break
             rate.sleep()
+        if leds: self.command_leds_default()
+
+    def drive_turn(self, angle, theta, speed, leds=False):
+        '''
+        theta in radians/s, where -1 is left turn, 1 is right turn
+        0 is straight
+        angle should be positive
+        speed should be in [-1, 1]
+        '''
+        if leds: self.command_leds_color(ColorRGBA(r=208, g=0, b=255, a=255))
+        starting_ctheta = self.ctheta
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.set_velocities(speed, theta)
+            cur_angle = self.ctheta - starting_ctheta
+            if cur_angle >= angle:
+                break
+            rate.sleep()
+        self.set_velocities(0, 0)
         if leds: self.command_leds_default()
 
     def command_leds_all(self, colors):
@@ -276,6 +296,12 @@ class MoveNode(DTROS):
         seconds, leds = params['seconds'], params['leds']
         self.pause(seconds, leds)
         return SetStringResponse(success=True, message=f"Paused for {seconds}s!")
+    
+    def drive_turn_request(self, req):
+        params = json.loads(req.data)
+        angle, theta, speed, leds = params['angle'], params['theta'], params['speed'], params['leds']
+        self.drive_turn(angle, theta, speed, leds)
+        return SetStringResponse(success=True, message=f"Turned for {distance}rad, with rotational velocity of {theta}rad/s, with speed {speed}m/s!")
 
     def straight_line_task(self):
         self.drive_straight(1.25, 0.4)
