@@ -6,7 +6,8 @@ import rospy
 from duckietown.dtros import DTROS, NodeType
 from duckietown_msgs.msg import Pose2DStamped, WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
 from std_msgs.msg import ColorRGBA, String
-from std_srvs.srv import SetString, SetStringResponse
+#from std_srvs.srv import SetString, SetStringResponse
+from computer_vision.srv import SetString, SetStringResponse
 import math
 import time
 import numpy as np

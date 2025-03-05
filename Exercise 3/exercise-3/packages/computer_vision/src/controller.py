@@ -28,7 +28,7 @@ class PIDController(DTROS):
 
         # PID controller variables
         self.straight_line_pid = {
-            "kp": -0.01,
+            "kp": -0.02, # 0.03 too big, 0.01 too small. 0.02 is good - could keep calibrating though
             "ki": 0,
             "kd": 0,
             "previous_error": 0,
@@ -87,13 +87,14 @@ class PIDController(DTROS):
             if self.maes is None: continue
             dt = 1 / rate_int
             # get the error between yellow line and target line from the camera detection node
-            yellow_error = self.maes["yellow"]
-            yellow_error = self.maes["midlane"]
-            # feed this into the pid function to get the amount to turnt he bot
-            omega = self.get_pid_controls(self.straight_line_pid, yellow_error, dt)
+            error = self.maes["yellow"]
+            #error = self.maes["midlane"]
+            if error == -1: self.set_velocities(0, 0)
+            # feed this into the pid function to get the amount to turn the bot
+            omega = self.get_pid_controls(self.straight_line_pid, error, dt)
             rospy.loginfo(omega)
             # send this to the wheel commands
-            self.set_velocities(0.25, omega)
+            self.set_velocities(0.20, omega)
             rate.sleep()
 
     def on_shutdown(self):
@@ -102,7 +103,7 @@ class PIDController(DTROS):
         pass
 
 if __name__ == '__main__':
-    node = PIDController(node_name='color_based_movement_node')
+    node = PIDController(node_name='controller')
     rospy.sleep(2)
     node.straight_line()
     rospy.spin()
