@@ -94,7 +94,7 @@ class PIDController(DTROS):
             omega = self.get_pid_controls(self.straight_line_pid, error, dt)
             rospy.loginfo(omega)
             # send this to the wheel commands
-            self.set_velocities(0.20, omega)
+            self.set_velocities(0.25, omega)
             rate.sleep()
 
     def on_shutdown(self):

@@ -148,18 +148,24 @@ class ColorBasedMovement(DTROS):
         self.all_blink()
         # move straight for at least 30cm
         self.drive_straight(0.5, 0.4, True)
+        # pause
+        self.pause(1)
 
     def on_blue(self):
         # signals on the right side
         self.blink_right()
         # move in a curve through 90 degrees to the right
-        self.drive_arc(0.1, -math.pi, 0.25, True)
+        self.drive_arc(0.2, -math.pi, 0.25, True)
+        # pause
+        self.pause(1)
 
     def on_green(self):
         # signals on the left side
-        self.blink_left
+        self.blink_left()
         # move i a curve through 90 degrees to the left
-        self.drive_arc(0.1, -math.pi, 0.25, True)
+        self.drive_arc(0.5, math.pi * 0.5, 0.25, True)
+        # pause
+        self.pause(1)
 
     def movement(self):
         # drive straight until it hits a r/g/b line

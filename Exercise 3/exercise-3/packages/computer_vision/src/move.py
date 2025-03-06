@@ -301,7 +301,7 @@ class MoveNode(DTROS):
         params = json.loads(req.data)
         angle, theta, speed, leds = params['angle'], params['theta'], params['speed'], params['leds']
         self.drive_turn(angle, theta, speed, leds)
-        return SetStringResponse(success=True, message=f"Turned for {distance}rad, with rotational velocity of {theta}rad/s, with speed {speed}m/s!")
+        return SetStringResponse(success=True, message=f"Turned for {angle}rad, with rotational velocity of {theta}rad/s, with speed {speed}m/s!")
 
     def straight_line_task(self):
         self.drive_straight(1.25, 0.4)

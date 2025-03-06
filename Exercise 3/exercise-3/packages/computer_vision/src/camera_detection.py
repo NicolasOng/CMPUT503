@@ -348,14 +348,14 @@ class CameraDetectionNode(DTROS):
         # draw the center
         cv2.circle(image, (int(center[0]), int(center[1])), radius=2, color=self.color_to_bgr[color], thickness=-1)
         # draw the x, y coordinates
-        cv2.putText(image, f"{coords}", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
+        cv2.putText(image, f"({coords[0]:.2f}, {coords[1]:.2f})", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
 
     def draw_MAE_values(self, image, yellow_mae, mid_lane_mae):
         '''
         this function draws the MAE values on the image
         '''
-        cv2.putText(image, f"Yellow MAE: {yellow_mae}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.YELLOW])
-        cv2.putText(image, f"Mid-Lane MAE: {mid_lane_mae}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.BLUE])
+        cv2.putText(image, f"Yellow MAE: {yellow_mae:.2f}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.YELLOW])
+        cv2.putText(image, f"Mid-Lane MAE: {mid_lane_mae:.2f}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.BLUE])
 
     def project_image_from_ground(self, image):
         homography_inv = np.linalg.inv(self.homography_to_ground)
@@ -372,7 +372,7 @@ class CameraDetectionNode(DTROS):
         # draw the center
         cv2.circle(image, (int(center[0]), int(center[1])), radius=2, color=self.color_to_bgr[color], thickness=-1)
         # draw the x, y coordinates
-        cv2.putText(image, f"{coords}", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
+        cv2.putText(image, f"({coords[0]:.2f}, {coords[1]:.2f})", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
     
     def perform_camera_detection(self):
         rate = rospy.Rate(10)
