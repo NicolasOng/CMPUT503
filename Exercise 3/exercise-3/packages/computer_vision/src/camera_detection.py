@@ -81,7 +81,11 @@ class CameraDetectionNode(DTROS):
         }
 
         # point detection thresholds
-        self.point_threshold = 400
+        self.point_threshold = 200
+        self.side_threshold = 250
+        self.left_threshold = self.ground_w / 2 - self.side_threshold
+        self.right_threshold = self.ground_w / 2 + self.side_threshold
+        # if the bot filters out the white line to the left or right of the yellow line
         self.above_yellow = False
 
         # color to BGR dictionary
@@ -96,14 +100,19 @@ class CameraDetectionNode(DTROS):
 
         # target line for MAE calculation
         self.target_line = [0.0753, self.ground_w / 2]
+        self.target_line_left = [0.0753, self.ground_w / 2 - 150]
+        self.target_line_right = [0.0753, self.ground_w / 2 + 150]
+        self.target_line = [0.0753, self.ground_w / 2]
         if self.degree == 2:
             self.target_line = [0, 0.0753, self.ground_w / 2]
+            self.target_line_left = [0.0753, self.ground_w / 2 - 150]
+            self.target_line_right = [0, 0.0753, self.ground_w / 2 + 150]
 
         # topic to publish MAEs
         self.mae_topic = rospy.Publisher(f"/{self.vehicle_name}/maes", String, queue_size=1)
 
         # which error lines to render
-        self.error_lines = "mid_lane" # yellow or mid_line
+        self.error_lines = "yellow" # yellow or mid_line
 
         # topic to publish projected and unprojected image
         self.projected_image_topic = rospy.Publisher(f"/{self.vehicle_name}/projected_image", Image, queue_size=1)
@@ -254,6 +263,8 @@ class CameraDetectionNode(DTROS):
         points = self.get_color_mask_pixel_list(color, image)
         # filter the pixels for ones below a certain threshold
         points = points[points[:, 0] < self.point_threshold]
+        points = points[points[:, 1] > self.left_threshold]
+        points = points[points[:, 1] < self.right_threshold]
         # can also use the yellow line as a filter for the white line,
         # so we are only looking at one side of the yellow line
         if div_coeffs is not None:
@@ -375,7 +386,7 @@ class CameraDetectionNode(DTROS):
         cv2.putText(image, f"({coords[0]:.2f}, {coords[1]:.2f})", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
     
     def perform_camera_detection(self):
-        rate = rospy.Rate(10)
+        rate = rospy.Rate(5)
         while not rospy.is_shutdown():
             if self.camera_image is None: continue
             # create a copy of the camera image
@@ -423,13 +434,11 @@ class CameraDetectionNode(DTROS):
             image, yellow_line = self.get_best_fit_line_full(Color.YELLOW, image)
             # perform white line detection - get the coefficients
             # also draws the points used
-            white_line = None
-            if yellow_line is not None and yellow_line.size > 0:
-                image, white_line = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=yellow_line)
+            image, white_line = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=self.target_line)
             # get the mid-lane line coefficients
             mid_lane_line = None
             yellow_mae, mid_lane_mae = -1, -1
-            if white_line is not None and white_line.size > 0:
+            if white_line is not None and white_line.size > 0 and yellow_line is not None and yellow_line.size > 0:
                 mid_lane_line = (np.array(yellow_line) + np.array(white_line)) / 2
                 # calculate the MAE between the yellow line and the target line
                 yellow_mae = self.get_mae(self.target_line, yellow_line)
@@ -452,6 +461,8 @@ class CameraDetectionNode(DTROS):
             image = self.plot_best_fit_line_full(white_line, image, Color.WHITE)
             image = self.plot_best_fit_line_full(mid_lane_line, image, Color.BLUE)
             image = self.plot_best_fit_line_full(self.target_line, image, Color.GREEN)
+            image = self.plot_best_fit_line_full(self.target_line_left, image, Color.GREEN)
+            image = self.plot_best_fit_line_full(self.target_line_right, image, Color.GREEN)
             # make a copy of the image - save this for un-projection later.
             projected_image = image.copy()
             # draw the projected color bounding boxes and their calculated ground x, y coordinates

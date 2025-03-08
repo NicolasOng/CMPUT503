@@ -13,6 +13,7 @@ from cv_bridge import CvBridge
 from move import MoveNode
 from camera_detection import CameraDetectionNode
 import threading
+import math
 
 class PIDController(DTROS):
     def __init__(self, node_name):
@@ -28,9 +29,9 @@ class PIDController(DTROS):
 
         # PID controller variables
         self.straight_line_pid = {
-            "kp": -0.02, # 0.03 too big, 0.01 too small. 0.02 is good - could keep calibrating though
+            "kp": -0.025, #negative,  0.03 too big, 0.01 too small. 0.02~0.025 is good - could keep calibrating though
             "ki": 0,
-            "kd": 0,
+            "kd": 0, #negative, 0 too small, 0.5 too big
             "previous_error": 0,
             "integral": 0
         }
@@ -81,20 +82,23 @@ class PIDController(DTROS):
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
     
     def straight_line(self):
-        rate_int = 10
+        rate_int = 5
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
             if self.maes is None: continue
             dt = 1 / rate_int
             # get the error between yellow line and target line from the camera detection node
-            error = self.maes["yellow"]
-            #error = self.maes["midlane"]
-            if error == -1: self.set_velocities(0, 0)
+            #error = self.maes["yellow"]
+            error = self.maes["midlane"]
             # feed this into the pid function to get the amount to turn the bot
             omega = self.get_pid_controls(self.straight_line_pid, error, dt)
+            omega = max(-math.pi, min(omega, math.pi))
             rospy.loginfo(omega)
             # send this to the wheel commands
-            self.set_velocities(0.25, omega)
+            if error == -1:
+                self.set_velocities(0.25, -math.pi)
+            else:
+                self.set_velocities(0.25, omega)
             rate.sleep()
 
     def on_shutdown(self):
