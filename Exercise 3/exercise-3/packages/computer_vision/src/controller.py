@@ -48,7 +48,7 @@ class PIDController(DTROS):
         '''
         maes = {
             "yellow": yellow_mae,
-            "midlane": mid_lane_mae,
+            "white": white_mae,
         }
         '''
         meas_json = msg.data
@@ -87,16 +87,24 @@ class PIDController(DTROS):
         while not rospy.is_shutdown():
             if self.maes is None: continue
             dt = 1 / rate_int
-            # get the error between yellow line and target line from the camera detection node
-            #error = self.maes["yellow"]
-            error = self.maes["midlane"]
+            # get the error between yellow line and white line from the camera detection node
+            yellow_error, white_error = self.maes["yellow"], self.maes["white"]
+            error = None
+            if yellow_error is not None and white_error is not None:
+                error = (yellow_error + white_error) / 2
+            elif yellow_error is None and white_error is not None:
+                error = white_error
+            elif yellow_error is not None and white_error is None:
+                error = yellow_error
             # feed this into the pid function to get the amount to turn the bot
-            omega = self.get_pid_controls(self.straight_line_pid, error, dt)
-            omega = max(-math.pi, min(omega, math.pi))
-            rospy.loginfo(omega)
+            if error is not None:
+                omega = self.get_pid_controls(self.straight_line_pid, error, dt)
+                clamp_value = 2 * math.pi
+                omega = max(-clamp_value, min(omega, clamp_value))
+            rospy.loginfo(f'error: {error}, omega: {omega}')
             # send this to the wheel commands
-            if error == -1:
-                self.set_velocities(0.25, -math.pi)
+            if error is None:
+                self.set_velocities(0, 0)
             else:
                 self.set_velocities(0.25, omega)
             rate.sleep()

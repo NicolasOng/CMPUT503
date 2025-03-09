@@ -81,12 +81,10 @@ class CameraDetectionNode(DTROS):
         }
 
         # point detection thresholds
-        self.point_threshold = 200
+        self.point_threshold = 400
         self.side_threshold = 250
         self.left_threshold = self.ground_w / 2 - self.side_threshold
         self.right_threshold = self.ground_w / 2 + self.side_threshold
-        # if the bot filters out the white line to the left or right of the yellow line
-        self.above_yellow = False
 
         # color to BGR dictionary
         self.color_to_bgr = {
@@ -111,12 +109,20 @@ class CameraDetectionNode(DTROS):
         # topic to publish MAEs
         self.mae_topic = rospy.Publisher(f"/{self.vehicle_name}/maes", String, queue_size=1)
 
-        # which error lines to render
-        self.error_lines = "yellow" # yellow or mid_line
-
         # topic to publish projected and unprojected image
         self.projected_image_topic = rospy.Publisher(f"/{self.vehicle_name}/projected_image", Image, queue_size=1)
         self.unprojected_image_topic = rospy.Publisher(f"/{self.vehicle_name}/unprojected_image", Image, queue_size=1)
+
+        # toggle for drawing to the camera
+        self.draw_bbs = True
+        self.draw_lanes = True
+
+        # if the bot puts the yellow line on the left or right
+        self.yellow_on_left = True
+
+        # the range for calculating the mean errors
+        self.error_lower_threshold = 50
+        self.error_upper_threshold = 100
 
     def camera_callback(self, msg):
         # convert compressed image to cv2
@@ -252,7 +258,7 @@ class CameraDetectionNode(DTROS):
 
         return coeffs
     
-    def get_best_fit_line_full(self, color, image, div_coeffs=None):
+    def get_best_fit_line_full(self, color, image, div_coeffs=None, above=True):
         '''
         this function gets and draws the best fit line for the given color.
         also filters out points that are farther in the distance from the camera
@@ -272,12 +278,13 @@ class CameraDetectionNode(DTROS):
             x_values = points[:, 0]
             y_poly = np.polyval(div_coeffs, x_values)
             # filter for points on either side of the line
-            if self.above_yellow:
+            if above:
                 points = points[points[:, 1] >= y_poly]
             else:
                 points = points[points[:, 1] <= y_poly]
         # draw the filtered points
-        self.draw_points(points, color, image)
+        if self.draw_lanes:
+            self.draw_points(points, color, image)
         # get the best fit line
         coeffs = None
         if points.size != 0:
@@ -290,14 +297,15 @@ class CameraDetectionNode(DTROS):
         '''
         this function calculates the mean squared error between two lines
         '''
-        # get x-values for the bottom half of the image (rotated)
-        x_values = np.linspace(0, self.point_threshold, 100)
+        # get x-values for the range to calculate the error (rotated)
+        x_values = np.linspace(self.error_lower_threshold, self.error_upper_threshold, 100)
         # get y-values for both lines
         y_target = np.polyval(coeff_target, x_values)
         y_measured = np.polyval(coeff_measured, x_values)
         # Compute Mean Squared Error (MSE)
         #mse = np.mean((y_measured - y_target) ** 2)
         # compute Mean Absolute Error (MAE)
+        # compute Mean Error (ME)
         mae = np.mean(y_measured - y_target)
         return mae
     
@@ -305,9 +313,10 @@ class CameraDetectionNode(DTROS):
         '''
         this function plots the error between the target line and the measured line
         '''
+        if not self.draw_lanes: return image
         image = self.rotate_image(image)
-        # get x-values for the bottom half of the image
-        x_values = np.linspace(0, self.point_threshold, 100)
+        # get x-values for the range where the error was calculated
+        x_values = np.linspace(self.error_lower_threshold, self.error_upper_threshold, 100)
         # get y-values for both lines
         y_target = np.polyval(coeff_target, x_values)
         y_measured = np.polyval(coeff_measured, x_values)
@@ -319,6 +328,7 @@ class CameraDetectionNode(DTROS):
         return image
     
     def plot_best_fit_line(self, coeffs, image, color):
+        if not self.draw_lanes: return image
         # Generate x and y values for plotting in image
         x_fit = np.linspace(0, self.ground_w, 1000)
         y_fit = np.polyval(coeffs, x_fit)
@@ -334,6 +344,7 @@ class CameraDetectionNode(DTROS):
         '''
         this function plots the best fit line in the rotated image
         '''
+        if not self.draw_lanes: return image
         if coeffs is None or len(coeffs) == 0: return image
         image = self.rotate_image(image)
         self.plot_best_fit_line(coeffs, image, color)
@@ -352,6 +363,7 @@ class CameraDetectionNode(DTROS):
         '''
         this function draws the projected bounding box and the ground x, y coordinates
         '''
+        if not self.draw_bbs: return
         if points is None or points.size == 0: return
         # draw the bounding box
         points = points.astype(np.int32).reshape((-1, 1, 2))
@@ -365,6 +377,7 @@ class CameraDetectionNode(DTROS):
         '''
         this function draws the MAE values on the image
         '''
+        if not self.draw_lanes: return
         cv2.putText(image, f"Yellow MAE: {yellow_mae:.2f}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.YELLOW])
         cv2.putText(image, f"Mid-Lane MAE: {mid_lane_mae:.2f}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.BLUE])
 
@@ -376,6 +389,7 @@ class CameraDetectionNode(DTROS):
         '''
         this function draws the bounding box and the ground x, y coordinates
         '''
+        if not self.draw_bbs: return
         if bb is None: return
         # draw the bounding box
         x, y, w, h = bb
@@ -434,31 +448,46 @@ class CameraDetectionNode(DTROS):
             image, yellow_line = self.get_best_fit_line_full(Color.YELLOW, image)
             # perform white line detection - get the coefficients
             # also draws the points used
-            image, white_line = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=self.target_line)
+            image, white_line_left = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=self.target_line, above=True)
+            image, white_line_right = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=self.target_line, above=True)
+            # choose the "canonical" white line, based on where the yellow line toggle.
+            # also choose the target lines
+            if self.yellow_on_left:
+                white_line = white_line_right
+                yellow_target_line = self.target_line_left
+                white_target_line = self.target_line_right
+            else:
+                white_line = white_line_left
+                yellow_target_line = self.target_line_right
+                white_target_line = self.target_line_left
             # get the mid-lane line coefficients
             mid_lane_line = None
-            yellow_mae, mid_lane_mae = -1, -1
             if white_line is not None and white_line.size > 0 and yellow_line is not None and yellow_line.size > 0:
                 mid_lane_line = (np.array(yellow_line) + np.array(white_line)) / 2
+            # get the errors between the white and yellow lines
+            yellow_mae, white_mae = None, None
+            if yellow_line is not None and yellow_line.size > 0:
                 # calculate the MAE between the yellow line and the target line
-                yellow_mae = self.get_mae(self.target_line, yellow_line)
+                yellow_mae = self.get_mae(yellow_target_line, yellow_line)
+            if white_line is not None and white_line.size > 0:
                 # calculate MAE between the mid-lane line and the target line
-                mid_lane_mae = self.get_mae(self.target_line, mid_lane_line)
+                white_mae = self.get_mae(white_target_line, white_line)
             # publish the MAEs
             maes = {
                 "yellow": yellow_mae,
-                "midlane": mid_lane_mae,
+                "white": white_mae,
             }
             json_maes = json.dumps(maes)
             self.mae_topic.publish(json_maes)
-            # draw the error lines (either yellow or mid-lane)
-            if self.error_lines == "yellow" and yellow_line is not None and yellow_line.size > 0:
-                image = self.plot_errors(self.target_line, yellow_line, image)
-            elif mid_lane_line is not None and mid_lane_line.size > 0:
-                image = self.plot_errors(self.target_line, mid_lane_line, image)
+            # draw the error lines (yellow and white)
+            if yellow_line is not None and yellow_line.size > 0:
+                image = self.plot_errors(yellow_target_line, yellow_line, image)
+            elif white_line is not None and white_line.size > 0:
+                image = self.plot_errors(white_target_line, white_line, image)
             # draw the yellow, white, mid-lane (blue), and target (green) lines
             image = self.plot_best_fit_line_full(yellow_line, image, Color.YELLOW)
-            image = self.plot_best_fit_line_full(white_line, image, Color.WHITE)
+            image = self.plot_best_fit_line_full(white_line_left, image, Color.WHITE)
+            image = self.plot_best_fit_line_full(white_line_right, image, Color.WHITE)
             image = self.plot_best_fit_line_full(mid_lane_line, image, Color.BLUE)
             image = self.plot_best_fit_line_full(self.target_line, image, Color.GREEN)
             image = self.plot_best_fit_line_full(self.target_line_left, image, Color.GREEN)
@@ -471,7 +500,7 @@ class CameraDetectionNode(DTROS):
             self.draw_projected_bounding_box(image, green_bb_p, green_center_p, green_coords, Color.GREEN)
             # crop and draw the 2 error values
             image = image[int(self.ground_h * 0.3):int(self.ground_h), int(0):int(self.ground_w)]
-            self.draw_MAE_values(image, yellow_mae, mid_lane_mae)
+            self.draw_MAE_values(image, yellow_mae, white_mae)
             # crop and publish the projected image
             self.projected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             # un-project the image copy to the camera frame
@@ -482,7 +511,7 @@ class CameraDetectionNode(DTROS):
             self.draw_bounding_box(image, green_bb, green_center, green_coords, Color.GREEN)
             self.draw_bounding_box(image, blue_bb, blue_center, blue_coords, Color.BLUE)
             # draw the 2 error values
-            self.draw_MAE_values(image, yellow_mae, mid_lane_mae)
+            self.draw_MAE_values(image, yellow_mae, white_mae)
             # publish the un-projected image
             self.unprojected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             rate.sleep()
