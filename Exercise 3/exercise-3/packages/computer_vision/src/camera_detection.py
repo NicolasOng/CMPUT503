@@ -373,13 +373,15 @@ class CameraDetectionNode(DTROS):
         # draw the x, y coordinates
         cv2.putText(image, f"({coords[0]:.2f}, {coords[1]:.2f})", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
 
-    def draw_MAE_values(self, image, yellow_mae, mid_lane_mae):
+    def draw_MAE_values(self, image, yellow_mae, white_mae):
         '''
         this function draws the MAE values on the image
         '''
         if not self.draw_lanes: return
-        cv2.putText(image, f"Yellow MAE: {yellow_mae:.2f}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.YELLOW])
-        cv2.putText(image, f"Mid-Lane MAE: {mid_lane_mae:.2f}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.BLUE])
+        if yellow_mae is not None: yellow_mae = round(yellow_mae, 2)
+        if white_mae is not None: white_mae = round(white_mae, 2)
+        cv2.putText(image, f"Yellow ME: {yellow_mae}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.YELLOW])
+        cv2.putText(image, f"White ME: {white_mae}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[Color.BLUE])
 
     def project_image_from_ground(self, image):
         homography_inv = np.linalg.inv(self.homography_to_ground)
@@ -400,9 +402,10 @@ class CameraDetectionNode(DTROS):
         cv2.putText(image, f"({coords[0]:.2f}, {coords[1]:.2f})", (int(center[0]), int(center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color_to_bgr[color])
     
     def perform_camera_detection(self):
-        rate = rospy.Rate(5)
+        rate = rospy.Rate(10)
         while not rospy.is_shutdown():
             if self.camera_image is None: continue
+            start_time = rospy.Time.now()
             # create a copy of the camera image
             image = self.camera_image.copy()
             # undistort camera image
@@ -482,7 +485,7 @@ class CameraDetectionNode(DTROS):
             # draw the error lines (yellow and white)
             if yellow_line is not None and yellow_line.size > 0:
                 image = self.plot_errors(yellow_target_line, yellow_line, image)
-            elif white_line is not None and white_line.size > 0:
+            if white_line is not None and white_line.size > 0:
                 image = self.plot_errors(white_target_line, white_line, image)
             # draw the yellow, white, mid-lane (blue), and target (green) lines
             image = self.plot_best_fit_line_full(yellow_line, image, Color.YELLOW)
@@ -515,6 +518,9 @@ class CameraDetectionNode(DTROS):
             # publish the un-projected image
             self.unprojected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             rate.sleep()
+            end_time = rospy.Time.now()
+            duration = (end_time - start_time).to_sec()  # Convert to seconds
+            rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
 
     def on_shutdown(self):
         # on shutdown

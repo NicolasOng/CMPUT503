@@ -28,8 +28,11 @@ class PIDController(DTROS):
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # PID controller variables
+        '''
+        P: negative [0.0234, 0.03125]
+        '''
         self.straight_line_pid = {
-            "kp": -0.025, #negative,  0.03 too big, 0.01 too small. 0.02~0.025 is good - could keep calibrating though
+            "kp": -0.0234,
             "ki": 0,
             "kd": 0, #negative, 0 too small, 0.5 too big
             "previous_error": 0,
@@ -82,7 +85,7 @@ class PIDController(DTROS):
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
     
     def straight_line(self):
-        rate_int = 5
+        rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
             if self.maes is None: continue
@@ -106,7 +109,8 @@ class PIDController(DTROS):
             if error is None:
                 self.set_velocities(0, 0)
             else:
-                self.set_velocities(0.25, omega)
+                #omega = 0
+                self.set_velocities(0.23, omega)
             rate.sleep()
 
     def on_shutdown(self):
