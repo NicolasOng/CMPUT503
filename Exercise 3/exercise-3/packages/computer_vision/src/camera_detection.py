@@ -36,13 +36,18 @@ class CameraDetectionNode(DTROS):
             [0.00027302496335237673, 0.017296161892938217, -2.946528752705874]
         ])
 
+        #top half crop
+        self.h_crop = 0
+
         # projection to ground plane homography matrix
         self.cam_w, self.cam_h = 640, 480
         self.ground_w, self.ground_h = 1250, 1250
-        pts_translation = np.array([(self.ground_w / 2) - 24, self.ground_h - 255], dtype=np.float32)
+        src_pts_translation = np.array([0, -(self.cam_h * self.h_crop)], dtype=np.float32)
+        dst_pts_translation = np.array([(self.ground_w / 2) - 24, self.ground_h - 255], dtype=np.float32)
         src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
         dst_pts = np.array([[0, 0], [186, 0], [0, 186], [186, 186]], dtype=np.float32)
-        dst_pts = dst_pts + pts_translation
+        src_pts = src_pts + src_pts_translation
+        dst_pts = dst_pts + dst_pts_translation
         self.homography_to_ground, _ = cv2.findHomography(src_pts, dst_pts)
 
         # robot position in the projected ground plane,
@@ -114,8 +119,8 @@ class CameraDetectionNode(DTROS):
         self.unprojected_image_topic = rospy.Publisher(f"/{self.vehicle_name}/unprojected_image", Image, queue_size=1)
 
         # toggle for drawing to the camera
-        self.draw_bbs = True
-        self.draw_lanes = True
+        self.draw_bbs = False
+        self.draw_lanes = False
 
         # if the bot puts the yellow line on the left or right
         self.yellow_on_left = True
@@ -265,12 +270,22 @@ class CameraDetectionNode(DTROS):
         '''
         # rotate the image 90 degrees clockwise
         image = self.rotate_image(image)
+
+        start_time_temp = rospy.Time.now()
+
         # get the color mask pixels
         points = self.get_color_mask_pixel_list(color, image)
         # filter the pixels for ones below a certain threshold
         points = points[points[:, 0] < self.point_threshold]
         points = points[points[:, 1] > self.left_threshold]
         points = points[points[:, 1] < self.right_threshold]
+
+        end_time_temp = rospy.Time.now()
+        duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+        #rospy.loginfo(f"\tColor Mask and filtering: {duration:.6f} seconds")
+
+        start_time_temp = rospy.Time.now()
+
         # can also use the yellow line as a filter for the white line,
         # so we are only looking at one side of the yellow line
         if div_coeffs is not None:
@@ -282,13 +297,32 @@ class CameraDetectionNode(DTROS):
                 points = points[points[:, 1] >= y_poly]
             else:
                 points = points[points[:, 1] <= y_poly]
+        
+        end_time_temp = rospy.Time.now()
+        duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+        #rospy.loginfo(f"\tMore filtering: {duration:.6f} seconds")
+
+        start_time_temp = rospy.Time.now()
+
         # draw the filtered points
         if self.draw_lanes:
             self.draw_points(points, color, image)
+        
+        end_time_temp = rospy.Time.now()
+        duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+        #rospy.loginfo(f"\tDrawing: {duration:.6f} seconds")
+
+        start_time_temp = rospy.Time.now()
+
         # get the best fit line
         coeffs = None
         if points.size != 0:
             coeffs = self.get_best_fit_line(points, degree=self.degree)
+        
+        end_time_temp = rospy.Time.now()
+        duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+        #rospy.loginfo(f"\Best Fit Line: {duration:.6f} seconds")
+
         # rotate the image back
         image = self.rotate_image_back(image)
         return image, coeffs
@@ -410,6 +444,10 @@ class CameraDetectionNode(DTROS):
             image = self.camera_image.copy()
             # undistort camera image
             image = self.undistort_image(image)
+            image = image[int(self.cam_h * self.h_crop):int(self.cam_h), int(0):int(self.cam_w)]
+
+            start_time_temp = rospy.Time.now()
+
             # get the nearest bounding boxes for red, blue, and green
             red_bb = self.get_nearest_bounding_box(Color.RED, image)
             blue_bb = self.get_nearest_bounding_box(Color.BLUE, image)
@@ -423,8 +461,22 @@ class CameraDetectionNode(DTROS):
                 blue_center = (blue_bb[0] + blue_bb[2] / 2, blue_bb[1] + blue_bb[3] / 2)
             if green_bb is not None:
                 green_center = (green_bb[0] + green_bb[2] / 2, green_bb[1] + green_bb[3] / 2)
+            
+            end_time_temp = rospy.Time.now()
+            duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+            #rospy.loginfo(f"BB calculations duration: {duration:.6f} seconds")
+
+            start_time_temp = rospy.Time.now()
+
             # project the image to the ground
             image = self.project_image_to_ground(image)
+
+            end_time_temp = rospy.Time.now()
+            duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+            #rospy.loginfo(f"ground projection duration: {duration:.6f} seconds")
+
+            start_time_temp = rospy.Time.now()
+
             # project the centers (and bounding boxes) to the ground
             red_center_p = self.project_point_to_ground(red_center)
             blue_center_p = self.project_point_to_ground(blue_center)
@@ -446,6 +498,13 @@ class CameraDetectionNode(DTROS):
             }
             json_coords = json.dumps(color_coords)
             self.color_coords_topic.publish(json_coords)
+
+            end_time_temp = rospy.Time.now()
+            duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+            #rospy.loginfo(f"bb projections and topic duration: {duration:.6f} seconds")
+
+            start_time_temp = rospy.Time.now()
+
             # perform yellow line detection - get the coefficients
             # also draws the points used
             image, yellow_line = self.get_best_fit_line_full(Color.YELLOW, image)
@@ -453,6 +512,13 @@ class CameraDetectionNode(DTROS):
             # also draws the points used
             image, white_line_left = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=self.target_line, above=True)
             image, white_line_right = self.get_best_fit_line_full(Color.WHITE, image, div_coeffs=self.target_line, above=True)
+
+            end_time_temp = rospy.Time.now()
+            duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+            #rospy.loginfo(f"calculating BF lines: {duration:.6f} seconds")
+
+            start_time_temp = rospy.Time.now()
+
             # choose the "canonical" white line, based on where the yellow line toggle.
             # also choose the target lines
             if self.yellow_on_left:
@@ -482,6 +548,13 @@ class CameraDetectionNode(DTROS):
             }
             json_maes = json.dumps(maes)
             self.mae_topic.publish(json_maes)
+
+            end_time_temp = rospy.Time.now()
+            duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+            #rospy.loginfo(f"various line calculations: {duration:.6f} seconds")
+
+            start_time_temp = rospy.Time.now()
+
             # draw the error lines (yellow and white)
             if yellow_line is not None and yellow_line.size > 0:
                 image = self.plot_errors(yellow_target_line, yellow_line, image)
@@ -517,10 +590,16 @@ class CameraDetectionNode(DTROS):
             self.draw_MAE_values(image, yellow_mae, white_mae)
             # publish the un-projected image
             self.unprojected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
+
+            end_time_temp = rospy.Time.now()
+            duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
+            #rospy.loginfo(f"plotting and publishing: {duration:.6f} seconds")
+
             rate.sleep()
             end_time = rospy.Time.now()
             duration = (end_time - start_time).to_sec()  # Convert to seconds
             rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+            rospy.loginfo(f"---")
 
     def on_shutdown(self):
         # on shutdown

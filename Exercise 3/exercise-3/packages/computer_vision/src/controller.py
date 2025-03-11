@@ -100,9 +100,10 @@ class PIDController(DTROS):
             elif yellow_error is not None and white_error is None:
                 error = yellow_error
             # feed this into the pid function to get the amount to turn the bot
+            omega = None
             if error is not None:
                 omega = self.get_pid_controls(self.straight_line_pid, error, dt)
-                clamp_value = 2 * math.pi
+                clamp_value = math.pi * 1
                 omega = max(-clamp_value, min(omega, clamp_value))
             rospy.loginfo(f'error: {error}, omega: {omega}')
             # send this to the wheel commands
