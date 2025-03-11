@@ -380,10 +380,11 @@ def project_bounding_box_to_ground(bounding_box):
 
 if __name__ == "__main__":
     degree = 2
-    image = cv2.imread("camera/image05.png")
+    image = cv2.imread("camera/image03.png")
     oh, ow = image.shape[:2]
     image = undistort_image(image)
-    image = project_image_to_ground(image)
+    #image = project_image_to_ground(image)
+    '''
     image, yellow_line = best_fit_line_rotated_filtered(Color.YELLOW, image, degree=degree)
     image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=True)
     measured_line = (np.array(yellow_line) + np.array(white_line)) / 2
@@ -397,6 +398,7 @@ if __name__ == "__main__":
     image = plot_errors_rotated(target_line, measured_line, image)
     image = project_image_from_ground(image)
     #draw_vertical_line(image, int(cam_w/2), Color.BLUE)
+    '''
     
     #'''
     cv2.imshow("PNG Image", image)

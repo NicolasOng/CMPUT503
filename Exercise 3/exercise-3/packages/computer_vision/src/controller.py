@@ -42,11 +42,14 @@ class PIDController(DTROS):
 
         '''
         for simple camera detection
+        P: negative [0.0234, 0.03125] [0.01, 0.1] -0.025
+        I: 0
+        D: -0.0125
         '''
         self.simple_pid = {
-            "kp": -0.03125,
-            "ki": 0,
-            "kd": 0, #negative, 0 too small, 0.5 too big
+            "kp": -0.025,
+            "ki": 0, #-0.025
+            "kd": -0.0125, #-0.0125
             "previous_error": 0,
             "integral": 0
         }

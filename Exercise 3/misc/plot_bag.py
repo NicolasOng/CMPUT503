@@ -80,12 +80,12 @@ def convert_odometry_df(df):
     df_expanded = df["data"].apply(json.loads).apply(pd.Series)
     return df_expanded
 
-def for_odometry(df_odometry):
+def for_odometry(df_odometry, fix=-2.25):
     df_odometry = convert_odometry_df(df_odometry)
 
-    #positions_to_positional_velocity(df_odometry, 2.125) # 3.875, 2.125
-    #positional_velocity_to_position(df_odometry)
-    robot_to_arbitrary_frame(df_odometry, -math.pi/2, 0, 0)
+    positions_to_positional_velocity(df_odometry, fix) # 3.875, 2.125
+    positional_velocity_to_position(df_odometry)
+    robot_to_arbitrary_frame(df_odometry, -math.pi/2 * 0, 0, 0)
 
     plot_trajectory(df_odometry)
     #plot(df_odometry, 'ctheta')
@@ -117,7 +117,7 @@ def for_wheels_cmd_executed(df_wce):
 
 # Plotting functions
 
-def plot_trajectory(df_bot, color="vpos", arrows=True, arrow_size=0.01):
+def plot_trajectory(df_bot, color="vpos", arrows=True, arrow_size=0.0125):
     plt.figure(figsize=(6, 6))  # Set figure size
 
     # Scatter plot with color based on speed
@@ -158,9 +158,12 @@ def plot(df, col):
     plt.show()
 
 if __name__ == '__main__':
-    bf = bagreader('bags/2025-02-21-22-36-31.bag')
+    #bf = bagreader('bags/2025-03-11Plap.bag')
+    bf = bagreader('bags/2025-03-11PDlap2.bag')
 
-    for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'))
+    for i in range(16):
+        i = i / 3
+        for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'), fix=i)
     #for_pose(read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose'))
     #for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
     #for_ticks(read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick'))
