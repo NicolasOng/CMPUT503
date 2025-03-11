@@ -32,7 +32,7 @@ class PIDController(DTROS):
         for complex camera detection
         P: negative [0.0234, 0.03125]
         '''
-        self.straight_line_pid = {
+        self.complex_pid = {
             "kp": -0.0234,
             "ki": 0,
             "kd": 0, #negative, 0 too small, 0.5 too big
@@ -43,10 +43,10 @@ class PIDController(DTROS):
         '''
         for simple camera detection
         '''
-        self.lane_following_pid = {
-            "kp": 0,
+        self.simple_pid = {
+            "kp": -0.03125,
             "ki": 0,
-            "kd": 0,
+            "kd": 0, #negative, 0 too small, 0.5 too big
             "previous_error": 0,
             "integral": 0
         }
@@ -88,25 +88,31 @@ class PIDController(DTROS):
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
     
-    def straight_line(self):
+    def calculate_avg_error(self):
+        # get the error between yellow line and white line from the camera detection node
+        yellow_error, white_error = self.maes["yellow"], self.maes["white"]
+        error = None
+        if yellow_error is not None and white_error is not None:
+            error = (yellow_error + white_error) / 2
+        elif yellow_error is None and white_error is not None:
+            error = white_error
+        elif yellow_error is not None and white_error is None:
+            error = yellow_error
+        return error
+
+    def pid_controller(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
             if self.maes is None: continue
             dt = 1 / rate_int
-            # get the error between yellow line and white line from the camera detection node
-            yellow_error, white_error = self.maes["yellow"], self.maes["white"]
-            error = None
-            if yellow_error is not None and white_error is not None:
-                error = (yellow_error + white_error) / 2
-            elif yellow_error is None and white_error is not None:
-                error = white_error
-            elif yellow_error is not None and white_error is None:
-                error = yellow_error
+            # get the average error
+            error = self.calculate_avg_error()
             # feed this into the pid function to get the amount to turn the bot
             omega = None
+            # clamp the error
             if error is not None:
-                omega = self.get_pid_controls(self.straight_line_pid, error, dt)
+                omega = self.get_pid_controls(self.simple_pid, error, dt)
                 clamp_value = math.pi * 1
                 omega = max(-clamp_value, min(omega, clamp_value))
             rospy.loginfo(f'error: {error}, omega: {omega}')
@@ -126,5 +132,5 @@ class PIDController(DTROS):
 if __name__ == '__main__':
     node = PIDController(node_name='controller')
     rospy.sleep(2)
-    node.straight_line()
+    node.pid_controller()
     rospy.spin()

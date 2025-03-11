@@ -119,8 +119,8 @@ class CameraDetectionNode(DTROS):
         self.unprojected_image_topic = rospy.Publisher(f"/{self.vehicle_name}/unprojected_image", Image, queue_size=1)
 
         # toggle for drawing to the camera
-        self.draw_bbs = False
-        self.draw_lanes = False
+        self.draw_bbs = True
+        self.draw_lanes = True
 
         # if the bot puts the yellow line on the left or right
         self.yellow_on_left = True
@@ -130,7 +130,7 @@ class CameraDetectionNode(DTROS):
         self.error_upper_threshold = 100
 
         # offset for simple calculation
-        self.simple_offset = 200
+        self.simple_offset = 100
 
     def camera_callback(self, msg):
         # convert compressed image to cv2
@@ -624,6 +624,7 @@ class CameraDetectionNode(DTROS):
         '''
         draws a vertical line at the given x-coordinate
         '''
+        x = int(x)
         cv2.line(image, (x, 0), (x, image.shape[0]), color=self.color_to_bgr[color], thickness=1)
     
     def perform_simple_camera_detection(self):
@@ -644,6 +645,7 @@ class CameraDetectionNode(DTROS):
                 image = image[:, int(0):int(self.cam_w / 2)]
             # do color detection for the white line, get the biggest white blob
             white_bb = self.get_largest_bounding_box(Color.WHITE, image)
+            white_center = None
             if white_bb is not None:
                 white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
             # get its distance from the left side of the image, plus some offset
@@ -651,9 +653,9 @@ class CameraDetectionNode(DTROS):
             if white_center is not None:
                 if self.yellow_on_left:
                     # negative error - bot should turn left.
-                    error = white_center[0] - (0 + self.simple_offset)
-                else:
                     error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
+                else:
+                    error = white_center[0] - (0 + self.simple_offset)
             # publish this as an error in the maes topic
             maes = {
                 "yellow": None,
@@ -681,5 +683,6 @@ class CameraDetectionNode(DTROS):
 if __name__ == '__main__':
     node = CameraDetectionNode(node_name='camera_detection_node')
     rospy.sleep(2)
-    node.perform_camera_detection()
+    #node.perform_camera_detection()
+    node.perform_simple_camera_detection()
     rospy.spin()
