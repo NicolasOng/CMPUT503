@@ -29,6 +29,7 @@ class PIDController(DTROS):
 
         # PID controller variables
         '''
+        for complex camera detection
         P: negative [0.0234, 0.03125]
         '''
         self.straight_line_pid = {
@@ -39,6 +40,9 @@ class PIDController(DTROS):
             "integral": 0
         }
 
+        '''
+        for simple camera detection
+        '''
         self.lane_following_pid = {
             "kp": 0,
             "ki": 0,

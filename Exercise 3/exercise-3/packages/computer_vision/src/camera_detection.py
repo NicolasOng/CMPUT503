@@ -129,6 +129,9 @@ class CameraDetectionNode(DTROS):
         self.error_lower_threshold = 50
         self.error_upper_threshold = 100
 
+        # offset for simple calculation
+        self.simple_offset = 200
+
     def camera_callback(self, msg):
         # convert compressed image to cv2
         cv2_image = self.bridge.compressed_imgmsg_to_cv2(msg)
@@ -595,6 +598,76 @@ class CameraDetectionNode(DTROS):
             duration = (end_time_temp - start_time_temp).to_sec()  # Convert to seconds
             #rospy.loginfo(f"plotting and publishing: {duration:.6f} seconds")
 
+            rate.sleep()
+            end_time = rospy.Time.now()
+            duration = (end_time - start_time).to_sec()  # Convert to seconds
+            rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+            rospy.loginfo(f"---")
+
+    def get_largest_bounding_box(self, color, cv2_img):
+        # get the color mask
+        color_mask = self.get_color_mask(color, cv2_img)
+        # get the color contours
+        contours, hierarchy = self.get_contours(color_mask)
+        # get the largest bounding box
+        largest_bb = None
+        largest_area = -float('inf')
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if (area > largest_area):
+                x, y, w, h = cv2.boundingRect(contour)
+                largest_area = area
+                largest_bb = (x, y, w, h)
+        return largest_bb
+    
+    def draw_vertical_line(self, image, x, color):
+        '''
+        draws a vertical line at the given x-coordinate
+        '''
+        cv2.line(image, (x, 0), (x, image.shape[0]), color=self.color_to_bgr[color], thickness=1)
+    
+    def perform_simple_camera_detection(self):
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            if self.camera_image is None: continue
+            start_time = rospy.Time.now()
+            # create a copy of the camera image
+            image = self.camera_image.copy()
+            # undistort camera image
+            image = self.undistort_image(image)
+            # crop image to a strip around the bottom
+            image = image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
+            # crop the left or right half off
+            if self.yellow_on_left:
+                image = image[:, int(self.cam_w / 2):int(self.cam_w)]
+            else:
+                image = image[:, int(0):int(self.cam_w / 2)]
+            # do color detection for the white line, get the biggest white blob
+            white_bb = self.get_largest_bounding_box(Color.WHITE, image)
+            if white_bb is not None:
+                white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
+            # get its distance from the left side of the image, plus some offset
+            error = None
+            if white_center is not None:
+                if self.yellow_on_left:
+                    # negative error - bot should turn left.
+                    error = white_center[0] - (0 + self.simple_offset)
+                else:
+                    error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
+            # publish this as an error in the maes topic
+            maes = {
+                "yellow": None,
+                "white": error,
+            }
+            json_maes = json.dumps(maes)
+            self.mae_topic.publish(json_maes)
+            # draw image for visualization
+            if self.draw_bbs:
+                self.draw_vertical_line(image, 0 + self.simple_offset, Color.BLUE)
+                self.draw_vertical_line(image, self.cam_w / 2 - self.simple_offset, Color.BLUE)
+                self.draw_bounding_box(image, white_bb, white_center, white_center, Color.BLUE)
+                self.draw_MAE_values(image, None, error)
+                self.unprojected_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             rate.sleep()
             end_time = rospy.Time.now()
             duration = (end_time - start_time).to_sec()  # Convert to seconds
