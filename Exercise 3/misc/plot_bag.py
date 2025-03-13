@@ -101,8 +101,13 @@ def for_pose(df_pose):
 def for_velocity(df_velocity):
     #['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'v', 'omega']
     df_velocity['time'] = df_velocity['Time']
-    plot(df_velocity, "v")
-    plot(df_velocity, "omega")
+    df_velocity['drot'] = df_velocity['omega']
+    df_velocity['dpos'] = df_velocity['v']
+    df_velocity['interval'] = df_velocity['time'].diff().fillna(0)
+    positional_velocity_to_position(df_velocity)
+    plot_trajectory(df_velocity, color="dpos")
+    #plot(df_velocity, "v")
+    #plot(df_velocity, "omega")
 
 def for_ticks(df_ticks):
     # ['Time', 'header.seq', 'header.stamp.secs', 'header.stamp.nsecs', 'header.frame_id', 'data', 'resolution', 'type']
@@ -161,10 +166,12 @@ if __name__ == '__main__':
     #bf = bagreader('bags/2025-03-11Plap.bag')
     bf = bagreader('bags/2025-03-11PDlap2.bag')
 
+    '''
     for i in range(16):
         i = i / 3
         for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'), fix=i)
+    '''
     #for_pose(read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose'))
-    #for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
+    for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
     #for_ticks(read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick'))
     #for_wheels_cmd_executed(read_bagfile(bf, '/csc22946/wheels_driver_node/wheels_cmd_executed'))
