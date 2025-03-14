@@ -85,7 +85,7 @@ def for_odometry(df_odometry, fix=-2.25):
 
     positions_to_positional_velocity(df_odometry, fix) # 3.875, 2.125
     positional_velocity_to_position(df_odometry)
-    robot_to_arbitrary_frame(df_odometry, -math.pi/2 * 0, 0, 0)
+    robot_to_arbitrary_frame(df_odometry, -math.pi/2 * 0.9, 0, 0)
 
     plot_trajectory(df_odometry)
     #plot(df_odometry, 'ctheta')
@@ -164,14 +164,16 @@ def plot(df, col):
 
 if __name__ == '__main__':
     #bf = bagreader('bags/2025-03-11Plap.bag')
-    bf = bagreader('bags/2025-03-11PDlap2.bag')
+    #bf = bagreader('bags/2025-03-11PDlap2.bag')
+    bf = bagreader('bags/2025-03-11 PIDlap.bag')
 
-    '''
+    #for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'), fix=8)
+    #'''
     for i in range(16):
         i = i / 3
         for_odometry(read_bagfile(bf, '/csc22946/exercise3/odometry'), fix=i)
-    '''
+    #'''
     #for_pose(read_bagfile(bf, '/csc22946/velocity_to_pose_node/pose'))
-    for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
+    #for_velocity(read_bagfile(bf, '/csc22946/kinematics_node/velocity'))
     #for_ticks(read_bagfile(bf, '/csc22946/left_wheel_encoder_node/tick'))
     #for_wheels_cmd_executed(read_bagfile(bf, '/csc22946/wheels_driver_node/wheels_cmd_executed'))
