@@ -1,6 +1,18 @@
 # Exercise 3: Computer Vision & Controllers for Robotics
 
-This is the folder that contains all the code for exercise 3 of CMPUT503.
+Group members:  Nicolas Ong, Truong Pham, Martin McLaren
+
+This is the folder that contains all the code for exercise 3 of CMPUT503. In this lab exercise, we used computer vision to enable our robot to perceive features of its environment and adjust its behavior accordingly. In addition, we used a feedback-based controller to correct for errors in our robot's movement, significantly improving its performance in driving along a track compared to our previous dead reckoning-based approach. We gained an understanding of some of the principles of computer vision and control theory, and how to apply these to solve problems related to robot control.
+
+## Dependencies
+The following dependencies and systems are required to run the software contained in this exercise repository.
+
+- Ubuntu 22.04
+- ROS 2 Humble
+- Duckietown Shell
+- Docker
+- NumPy
+- OpenCV
 
 ## Code Contents
 
