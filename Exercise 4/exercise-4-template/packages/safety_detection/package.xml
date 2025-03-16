@@ -4,8 +4,17 @@
   <description>
   This package contains the code for solving basic apriltag detection, and mobile robotics safety.
   </description>
-  <maintainer email="ddikshan@ualberta.ca">Dikshant</maintainer>
+  <maintainer email="nicolas.ong@ualberta.ca">Nicolas Ong</maintainer>
   <license>None</license>
 
   <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>rospy</build_depend>
+  <run_depend>rospy</run_depend>
+
+  <build_depend>std_msgs</build_depend>
+  <run_depend>std_msgs</run_depend>
+
+  <build_depend>message_generation</build_depend>
+  <run_depend>message_runtime</run_depend>
 </package>

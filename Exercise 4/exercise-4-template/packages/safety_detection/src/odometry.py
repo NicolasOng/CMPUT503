@@ -1,37 +1,26 @@
-#!/usr/bin/env python3
-
-# import required libraries
 import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
-from duckietown_msgs.msg import Pose2DStamped, WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
+from duckietown_msgs.msg import WheelEncoderStamped, Twist2DStamped, LEDPattern
 from std_msgs.msg import ColorRGBA, String
-#from std_srvs.srv import SetString, SetStringResponse
-from computer_vision.srv import SetString, SetStringResponse
+from safety_detection.srv import SetString, SetStringResponse
 import math
-import time
 import numpy as np
 import json
 
-import threading
-
-class MoveNode(DTROS):
+class OdometryNode(DTROS):
     def __init__(self, node_name):
-        super(MoveNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
+        super(OdometryNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         # Subscribers
-        #self.pose = rospy.Subscriber(f'/{self.vehicle_name}/velocity_to_pose_node/pose', Pose2DStamped, self.pose_callback)
-        #self.kinematics_velocity = rospy.Subscriber(f'/{self.vehicle_name}/kinematics_node/velocity', Twist2DStamped, self.velocity_callback)
-        #self.wheels_cmd_executed = rospy.Subscriber(f'/{self.vehicle_name}/wheels_driver_node/wheels_cmd_executed', Twist2DStamped, self.velocity_callback)
         self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
         self.right_encoder = rospy.Subscriber(f'/{self.vehicle_name}/right_wheel_encoder_node/tick', WheelEncoderStamped, self.right_wheel_callback)
 
         # Publishers
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
-        #self.wheel_command = rospy.Publisher(f"/{self.vehicle_name}/wheels_driver_node/wheels_cmd", WheelsCmdStamped, queue_size=1)
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
-        self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/exercise3/odometry', String, queue_size=10)
+        self.odometry_topic = rospy.Publisher(f'/{self.vehicle_name}/odometry', String, queue_size=10)
 
         # Services
         self.service_drive_straight = rospy.Service(f'/{self.vehicle_name}/drive_straight', SetString, self.drive_straight_request)
@@ -302,76 +291,6 @@ class MoveNode(DTROS):
         angle, theta, speed, leds = params['angle'], params['theta'], params['speed'], params['leds']
         self.drive_turn(angle, theta, speed, leds)
         return SetStringResponse(success=True, message=f"Turned for {angle}rad, with rotational velocity of {theta}rad/s, with speed {speed}m/s!")
-
-    def straight_line_task(self):
-        self.drive_straight(1.25, 0.4)
-        self.pause(0.5)
-        self.drive_straight(1.25, -0.4)
-        self.pause(0.5)
-    
-    def rotation_task(self):
-        self.rotate(math.pi/2, 0.4)
-        self.pause(0.5)
-        self.rotate(math.pi/2, -0.4)
-        self.pause(0.5)
-
-    def d_task(self):
-        pt = 2
-        # stop led signal + pause
-        self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
-        self.pause(5)
-        # start led signal
-        self.command_leds_color(ColorRGBA(r=0, g=255, b=0, a=255))
-        # long straight
-        self.drive_arc(1.1, 0.05, 0.4)
-        self.pause(pt)
-        # first corner
-        self.rotate(math.pi/2, 0.3)
-        self.pause(pt)
-        # first short straight
-        self.drive_arc(0.75, 0.1, 0.4)
-        self.pause(pt)
-        # first arc
-        self.drive_arc(0.6, 0.4, 0.5)
-        self.pause(pt)
-        # second short straight
-        self.drive_arc(0.4, 0.1, 0.4)
-        self.pause(pt)
-        # second arc
-        self.drive_arc(0.62, 0.4, 0.5)
-        self.pause(pt)
-        # second short straight
-        self.drive_arc(0.6, 0.075, 0.4)
-        self.pause(pt)
-        # second corner
-        self.rotate(math.pi/2, 0.3)
-        self.pause(pt)
-        # stop led signal + pause 2
-        self.command_leds_color(ColorRGBA(r=255, g=0, b=0, a=255))
-        self.pause(5)
-    
-    def reverse_park_task(self):
-        self.drive_straight(0.5, 0.5)
-        self.pause(1)
-        self.rotate(math.pi/2, -0.3)
-        self.pause(1)
-        self.drive_straight(0.3, -0.9)
-    
-    def eight_shape(self):
-        self.drive_arc(0.8, 0.8, 0.4)
-
-        self.pause(1)
-        self.drive_straight(0.01, 0.4)
-        self.pause(1)
-
-        self.drive_arc(0.8, -0.7, 0.4)
-
-    def random_task(self):
-        self.drive_straight(10, 0.5)
-        #self.pause(1)
-        #self.rotate(math.pi/2, -math.pi*3)
-        #self.pause(1)
-        #self.drive_straight(1, 0.5)
     
     def on_shutdown(self):
         # on shutdown,
@@ -382,14 +301,9 @@ class MoveNode(DTROS):
 
 if __name__ == '__main__':
     # create node
-    node = MoveNode(node_name='move_node')
+    node = OdometryNode(node_name='odometry_node')
     # wait for it to initialize
     rospy.sleep(2)
-    # start the thread that calculates odometry
-    vthread = threading.Thread(target=node.odometry)
-    vthread.start()
-    # start the selected task
-    #node.random_task()
-    # join the odometry thread (thread ends on shutdown)
-    vthread.join()
+    # start the odometry node
+    node.odometry()
     rospy.spin()

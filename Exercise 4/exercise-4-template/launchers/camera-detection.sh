@@ -6,7 +6,7 @@ source /environment.sh
 dt-launchfile-init
 
 # launch subscriber
-rosrun computer_vision camera_detection.py
+rosrun safety_detection camera_detection.py
 
 # wait for app to end
 dt-launchfile-join

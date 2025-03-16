@@ -6,7 +6,7 @@ source /environment.sh
 dt-launchfile-init
 
 # launch subscriber
-rosrun computer_vision move.py
+rosrun safety_detection odometry.py
 
 # wait for app to end
 dt-launchfile-join
