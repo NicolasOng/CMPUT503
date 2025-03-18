@@ -27,12 +27,13 @@ class CameraDetectionNode(DTROS):
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
         self.camera_detection_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_detection_image", Image, queue_size=1)
 
+        # TODO PUBLISHERS NOT WORKING, ESP. TAG LIST. FIX
         # AprilTag Publishers
-        self.tag_id = rospy.Publisher(f"/{self.vehicle_name}/tag_ids", int, queue_size=1)
+        #self.tag_id = rospy.Publisher(f"/{self.vehicle_name}/tag_ids", String, queue_size=1)
         #self.tag_center = rospy.Publisher(f"/{self.vehicle_name}/tag_center", String, queue_size=1)
         #self.tag_corners = rospy.Publisher(f"/{self.vehicle_name}/tag_corners", String, queue_size=1)
-        self_tag_list = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
-        self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+        #self_tag_list = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
+        #self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
 
         # AprilTag detector engine. Expensive to create/destroy, so create a single instance for class, call detect as needed
         self.at_detector = dt_apriltags.Detector()
@@ -385,6 +386,16 @@ class CameraDetectionNode(DTROS):
         # Convert image to grayscale
         image_grey = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
 
+
+        # MARTIN TODO 
+        # 1) MORE IMAGE PREPROCESSING; ATAGs NOT DETECTED IN LIGHTING ON TRACK
+        #       SOME IDEAS: decimate, reduce resolution, blur, etc.
+        # 
+        # 2) FIX PUBLISHERS FOR ATAG PROCESSING, ESP. ALL DETECTED TAG LIST
+        #
+        # ........
+        # ........
+
         # ApriltTag detector
         results = self.at_detector.detect(image_grey)
 
@@ -421,10 +432,12 @@ class CameraDetectionNode(DTROS):
         if self.draw_atag_toggle: 
             self.draw_atag_features(draw_image, top_left, bottom_right, id, center)
 
+
+        # TODO FIX PUBLISHERS
         # Publish data on all detected tags
-        self.tag_list.publish(json.dumps(tags_list))
+        #self.tag_list.publish(json.dumps(tags_list))
         # Publish ID of most prominently detected tag
-        self.tag_id.publish(id)  
+        #self.tag_id.publish(id)  
         
         # Publish image of most prominently detected tag
         #self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
