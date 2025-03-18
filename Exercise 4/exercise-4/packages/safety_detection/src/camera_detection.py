@@ -10,6 +10,7 @@ from std_msgs.msg import ColorRGBA, String
 from Color import Color
 import cv2
 from cv_bridge import CvBridge
+import dt_apriltags
 
 class CameraDetectionNode(DTROS):
     def __init__(self, node_name):
@@ -25,6 +26,16 @@ class CameraDetectionNode(DTROS):
         self.color_coords_topic = rospy.Publisher(f"/{self.vehicle_name}/color_coords", String, queue_size=1)
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
         self.camera_detection_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_detection_image", Image, queue_size=1)
+
+        # AprilTag Publishers
+        self.tag_id = rospy.Publisher(f"/{self.vehicle_name}/tag_ids", int, queue_size=1)
+        #self.tag_center = rospy.Publisher(f"/{self.vehicle_name}/tag_center", String, queue_size=1)
+        #self.tag_corners = rospy.Publisher(f"/{self.vehicle_name}/tag_corners", String, queue_size=1)
+        self_tag_list = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
+        self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+
+        # AprilTag detector engine. Expensive to create/destroy, so create a single instance for class, call detect as needed
+        self.at_detector = dt_apriltags.Detector()
 
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([
@@ -100,6 +111,7 @@ class CameraDetectionNode(DTROS):
         # Draw Toggles
         self.draw_lane_detection = True
         self.draw_bounding_boxes = True
+        self.draw_atag_toggle = True
 
         # if the bot puts the white line on the right or left
         self.white_on_right = True
@@ -360,6 +372,64 @@ class CameraDetectionNode(DTROS):
                 self.draw_bounding_box(draw_image, draw_white_bb, draw_white_center, white_center, Color.BLUE)
             self.draw_lane_error_value(draw_image, error)
         return draw_image
+    
+    # Draws a bounding box and ID on an ApriltTag 
+    def draw_atag_features(self, image, tl, br, id, center, colour=(255, 100, 255)):
+        cv2.rectangle(image, (br[0], br[1]), (tl[0], tl[1]), colour, 5) 
+        cv2.putText(image, id, (center[0], center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 2)
+
+    def perform_tag_detection(self, clean_image, draw_image):
+        if self.camera_image is None: 
+            return clean_image
+
+        # Convert image to grayscale
+        image_grey = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
+
+        # ApriltTag detector
+        results = self.at_detector.detect(image_grey)
+
+        #print("Number of detected tags: ", len(results))
+
+        tags_list = []
+
+        largest_tag_index = 0
+        largest_tag_area = 0
+
+        if len(results) == 0:
+            #self.tag_image.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
+            return draw_image
+        
+        # If multiple tags detected, find most prominent tag (largest by area)
+        if len(results) > 1:
+            for idx, r in enumerate(results):
+                tl = r.corners[0].astype(int)
+                br = r.corners[2].astype(int)
+                area = (tl[1] - br[1]) * (br[0] - tl[0])
+                if area > largest_tag_area:
+                    largest_tag_index = idx
+                    largest_tag_area = area
+
+                tags_list.append({"id" : r.tag_id, "center" : r.center, "corners" : r.corners})
+
+        largest_tag = results[largest_tag_index]
+
+        top_left = largest_tag.corners[0].astype(int)
+        bottom_right = largest_tag.corners[2].astype(int)
+        center = largest_tag.center.astype(int)
+        id = str(largest_tag.tag_id)
+        
+        if self.draw_atag_toggle: 
+            self.draw_atag_features(draw_image, top_left, bottom_right, id, center)
+
+        # Publish data on all detected tags
+        self.tag_list.publish(json.dumps(tags_list))
+        # Publish ID of most prominently detected tag
+        self.tag_id.publish(id)  
+        
+        # Publish image of most prominently detected tag
+        #self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
+                  
+        return draw_image
         
     def perform_camera_detection(self):
         rate = rospy.Rate(10)
@@ -377,6 +447,7 @@ class CameraDetectionNode(DTROS):
             # peform colored tape detection
             draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
             # perform apriltags detection (?)
+            draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
 
             # perform other detection (duckiebot from behind, pedestrians, etc) (?)
 
