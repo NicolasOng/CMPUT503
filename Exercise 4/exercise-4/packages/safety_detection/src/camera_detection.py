@@ -227,7 +227,12 @@ class CameraDetectionNode(DTROS):
         for bb in bbs:
             pbb = self.project_bounding_box_to_ground(bb["bb"])
             pc = self.project_point_to_ground(bb["center"])
-            pbbs.append({"bb": pbb, "center": pc})
+            data = {"bb": pbb, "center": pc}
+            serializable_data = {
+                'bb': data['bb'].tolist(),  # Convert the np.array to a Python list
+                'center': (float(data['center'][0]), float(data['center'][1]))  # Convert np.float32 to float
+            }
+            pbbs.append(serializable_data)
         return pbbs
     
     def draw_bounding_boxes_to_image(self, image, bbs, projected_bbs, color):
@@ -293,6 +298,7 @@ class CameraDetectionNode(DTROS):
         '''
         this function draws the bounding box and the ground x, y coordinates
         '''
+        if bb is None: return
         # draw the bounding box
         x, y, w, h = bb
         cv2.rectangle(image, (x, y), (x + w, y + h), self.color_to_bgr[color], 2) 
@@ -310,12 +316,12 @@ class CameraDetectionNode(DTROS):
     
     def perform_simple_lane_detection(self, clean_image, draw_image):
         if self.camera_image is None: return draw_image
-        # create a copy of the clean image
-        image = clean_image.copy()
         # crop image to a strip around the bottom
-        image = image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
+        image = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
         # crop the left or right half off
+        x_offset = 0
         if self.white_on_right:
+            x_offset = int(self.cam_w / 2)
             image = image[:, int(self.cam_w / 2):int(self.cam_w)]
         else:
             image = image[:, int(0):int(self.cam_w / 2)]
@@ -340,10 +346,19 @@ class CameraDetectionNode(DTROS):
         self.lane_error_topic.publish(json_le)
         # draw image for visualization
         if self.draw_lane_detection:
-            self.draw_vertical_line(image, 0 + self.simple_offset, Color.BLUE)
-            self.draw_vertical_line(image, self.cam_w / 2 - self.simple_offset, Color.BLUE)
-            self.draw_bounding_box(image, white_bb, white_center, white_center, Color.BLUE)
-            self.draw_lane_error_value(image, error)
+            line_1 = int(self.simple_offset + x_offset)
+            cv2.line(draw_image, (line_1, int(self.cam_h * 0.7)), (line_1, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
+            line_2 = int(self.cam_w / 2 - self.simple_offset + x_offset)
+            cv2.line(draw_image, (line_2, int(self.cam_h * 0.7)), (line_2, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
+            if white_bb is not None:
+                draw_white_bb = list(white_bb)
+                draw_white_bb[0] += int(x_offset)
+                draw_white_bb[1] += int(self.cam_h * 0.7)
+                draw_white_center = list(white_center)
+                draw_white_center[0] += int(x_offset)
+                draw_white_center[1] += int(self.cam_h * 0.7)
+                self.draw_bounding_box(draw_image, draw_white_bb, draw_white_center, white_center, Color.BLUE)
+            self.draw_lane_error_value(draw_image, error)
         return draw_image
         
     def perform_camera_detection(self):
@@ -382,6 +397,5 @@ class CameraDetectionNode(DTROS):
 if __name__ == '__main__':
     node = CameraDetectionNode(node_name='camera_detection_node')
     rospy.sleep(2)
-    #node.perform_camera_detection()
-    node.perform_simple_camera_detection()
+    node.perform_camera_detection()
     rospy.spin()
