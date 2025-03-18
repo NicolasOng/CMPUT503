@@ -94,6 +94,7 @@ class CameraDetectionNode(DTROS):
         
         # Draw Toggles
         self.draw_lane_detection = True
+        self.draw_bounding_boxes = True
 
         # if the bot puts the white line on the right or left
         self.white_on_right = True
@@ -145,81 +146,90 @@ class CameraDetectionNode(DTROS):
                                             cv2.CHAIN_APPROX_SIMPLE)
         return contours, hierarchy
     
-    def get_distance(self, point1, point2):
-        x1, y1 = point1
-        x2, y2 = point2
-        return np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-    
-    def get_nearest_bounding_box(self, color, cv2_img):
+    def get_bounding_boxes(self, color, cv2_img):
         # get the color mask
         color_mask = self.get_color_mask(color, cv2_img)
         # get the color contours
         contours, hierarchy = self.get_contours(color_mask)
         # get the nearest bounding box (to the bottom middle of the image)
-        nearest_bb = None
-        nearest_distance = float('inf')
+        bbs = []
         for contour in contours:
             area = cv2.contourArea(contour)
             if (area > 300): 
                 x, y, w, h = cv2.boundingRect(contour)
+                contour_bb = (x, y, w, h)
                 contour_center = (x + w / 2, y + h / 2)
-                distance = self.get_distance((self.cam_w / 2, self.cam_h), contour_center)
-                if distance < nearest_distance:
-                    nearest_distance = distance
-                    nearest_bb = (x, y, w, h)
-        return nearest_bb
+                bbs.append({"bb": contour_bb, "center": contour_center})
+        return bbs
     
     def project_point_to_ground(self, point):
         '''
         point is a tuple of (x, y) coordinates
+        the point is relative to the bot.
         '''
         point = np.array([point], dtype=np.float32)
         new_point = cv2.perspectiveTransform(point.reshape(-1, 1, 2), self.homography_to_ground)
-        return new_point.ravel()
+        new_point = new_point.ravel()
+        new_point = (new_point[0] - self.robot_x, -(new_point[1] - self.robot_y))
+        return new_point
     
     def project_bounding_box_to_ground(self, bounding_box):
         '''
         bounding_box is a tuple of (x, y, w, h) coordinates
-        output is a list of 4 points in the ground plane
+        output is a list of 4 points in the ground plane.
+        These points are relative to the robot.
         '''
         if not bounding_box: return None
         x, y, w, h = bounding_box
-        points = np.array([[x, y], [x + w, y], [x, y + h], [x + w, y + h]], dtype=np.float32)
+        points = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], dtype=np.float32)
         new_points = cv2.perspectiveTransform(points.reshape(-1, 1, 2), self.homography_to_ground)
-        return new_points.reshape(-1, 2)
+        new_points = new_points.reshape(-1, 2)
+        transformed_coords = np.column_stack([
+            new_points[:, 0] - self.robot_x,
+            -(new_points[:, 1] - self.robot_y)
+        ])
+        return transformed_coords
     
-    def perform_ground_color_detection(self):
-        if self.camera_image is None: return
-        # create a copy of the camera image
-        image = self.camera_image.copy()
-        # undistort camera image
-        image = self.undistort_image(image)
-        image = image[int(self.cam_h * self.h_crop):int(self.cam_h), int(0):int(self.cam_w)]
+    def project_bounding_boxes_to_ground(self, bbs):
+        pbbs = []
+        for bb in bbs:
+            pbb = self.project_bounding_box_to_ground(bb["bb"])
+            pc = self.project_point_to_ground(bb["center"])
+            pbbs.append({"bb": pbb, "center": pc})
+        return pbbs
+    
+    def draw_bounding_boxes_to_image(self, image, bbs, projected_bbs, color):
+        for i in range(len(bbs)):
+            bb = bbs[i]
+            pbb = projected_bbs[i]
+            self.draw_bounding_box(image, bb["bb"], bb["center"], pbb["center"], color)
 
-        # get the nearest bounding boxes for red, blue, and green
-        red_bb = self.get_nearest_bounding_box(Color.RED, image)
-        # get the bounding box centers
-        default_center = (-2, -2, 0, 0)
-        red_center = default_center
-        if red_bb is not None:
-            red_center = (red_bb[0] + red_bb[2] / 2, red_bb[1] + red_bb[3] / 2)
-        
-        # project the centers (and bounding boxes) to the ground
-        red_center_p = self.project_point_to_ground(red_center)
-        red_bb_p = self.project_bounding_box_to_ground(red_bb)
-        # get the x, y coordinates of the projected centers on the ground
-        # in mm, relative to the robot's center
-        # flip the y-axis so that positive y is forward
-        red_coords = (red_center_p[0] - self.robot_x, -(red_center_p[1] - self.robot_y))
-        # publish the color detection results
+    def perform_ground_color_detection(self, clean_image, draw_image):
+        if self.camera_image is None: return draw_image
+        # get all the bounding boxes above a certain area for each color (white, red, blue)
+        # also in the bottom half of the image
+        red_bbs = self.get_bounding_boxes(Color.RED, clean_image)
+        white_bbs = self.get_bounding_boxes(Color.WHITE, clean_image)
+        blue_bbs = self.get_bounding_boxes(Color.BLUE, clean_image)
+        # project the bounding boxes (and their centers) to the ground
+        red_bbs_p = self.project_bounding_boxes_to_ground(red_bbs)
+        white_bbs_p = self.project_bounding_boxes_to_ground(white_bbs)
+        blue_bbs_p = self.project_bounding_boxes_to_ground(blue_bbs)
+        # publish the info to the topic
         color_coords = {
-            "red": red_coords
+            "red": red_bbs_p,
+            "white": white_bbs_p,
+            "blue": blue_bbs_p
         }
         json_coords = json.dumps(color_coords)
         self.color_coords_topic.publish(json_coords)
-        # draw the color bounding boxes and their calculated ground x, y coordinates
-        self.draw_bounding_box(image, red_bb, red_center, red_coords, Color.RED)
-
+        # draw the bounding boxes and their centers, with their center ground coordinates
+        if self.draw_bounding_boxes:
+            self.draw_bounding_boxes_to_image(draw_image, red_bbs, red_bbs_p, Color.RED)
+            self.draw_bounding_boxes_to_image(draw_image, white_bbs, white_bbs_p, Color.WHITE)
+            self.draw_bounding_boxes_to_image(draw_image, blue_bbs, blue_bbs_p, Color.BLUE)
+        return draw_image
+    
     def get_largest_bounding_box(self, color, cv2_img):
         # get the color mask
         color_mask = self.get_color_mask(color, cv2_img)
@@ -247,7 +257,6 @@ class CameraDetectionNode(DTROS):
         '''
         this function draws the bounding box and the ground x, y coordinates
         '''
-        if bb is None: return
         # draw the bounding box
         x, y, w, h = bb
         cv2.rectangle(image, (x, y), (x + w, y + h), self.color_to_bgr[color], 2) 
@@ -315,10 +324,10 @@ class CameraDetectionNode(DTROS):
             # perform lane detection
             draw_image = self.perform_simple_lane_detection(clean_image.copy(), draw_image)
             # peform colored tape detection
-            self.perform_ground_color_detection()
-            # perform apriltags detection
+            draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
+            # perform apriltags detection (?)
 
-            # perform other detection (duckiebot from behind, pedestrians, etc)
+            # perform other detection (duckiebot from behind, pedestrians, etc) (?)
 
             # publish the image
             self.camera_detection_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
