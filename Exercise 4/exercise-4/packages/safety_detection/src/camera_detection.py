@@ -44,11 +44,9 @@ class CameraDetectionNode(DTROS):
         # projection to ground plane homography matrix
         self.cam_w, self.cam_h = 640, 480
         self.ground_w, self.ground_h = 1250, 1250
-        src_pts_translation = np.array([0, -(self.cam_h * self.h_crop)], dtype=np.float32)
         dst_pts_translation = np.array([(self.ground_w / 2) - 24, self.ground_h - 255], dtype=np.float32)
         src_pts = np.array([[284, 285], [443, 285], [273, 380], [584, 380]], dtype=np.float32)
         dst_pts = np.array([[0, 0], [186, 0], [0, 186], [186, 186]], dtype=np.float32)
-        src_pts = src_pts + src_pts_translation
         dst_pts = dst_pts + dst_pts_translation
         self.homography_to_ground, _ = cv2.findHomography(src_pts, dst_pts)
 
@@ -58,8 +56,15 @@ class CameraDetectionNode(DTROS):
 
         # Color Detection Stuff
         # color detection parameters in HSV format
-        self.red_lower = np.array([136, 87, 111], np.uint8)
-        self.red_upper = np.array([180, 255, 255], np.uint8)
+        # Define range
+        hr = 40
+        sr = 50
+        vr = 50
+        red_hsv = np.array([0, 144, 255])  # rGB: 255, 111, 111
+        self.red_lower = np.array([max(0, red_hsv[0] - hr), max(0, red_hsv[1] - sr), max(0, red_hsv[2] - vr)])
+        self.red_upper = np.array([min(179, red_hsv[0] + hr), min(255, red_hsv[1] + sr), min(255, red_hsv[2] + vr)])
+        #self.red_lower = np.array([136, 87, 111], np.uint8)
+        #self.red_upper = np.array([180, 255, 255], np.uint8)
 
         self.green_lower = np.array([34, 52, 72], np.uint8)
         self.green_upper = np.array([82, 255, 255], np.uint8)
@@ -101,6 +106,28 @@ class CameraDetectionNode(DTROS):
 
         # offset for simple lane detection
         self.simple_offset = 100
+
+        # threshold for ground/horizon
+        self.horizon = self.cam_h * 0.6
+
+        # masks for gorund bounding box detection
+        self.polygon_points = np.array([
+            [60 * self.cam_w // 100, self.cam_h/2],   # Top-right
+            [40 * self.cam_w // 100, self.cam_h/2],       # Top-left
+            [5 * self.cam_w // 100, self.cam_h],       # bottom-left
+            [95 * self.cam_w // 100, self.cam_h],   # bottom-right
+        ], np.int32)
+        self.lane_mask = np.zeros((self.cam_h, self.cam_w), dtype=np.uint8)
+        cv2.fillPoly(self.lane_mask, [self.polygon_points], 255)
+
+        self.polygon_points_white = np.array([
+            [55 * self.cam_w // 100, self.cam_h/2],   # Top-right
+            [45 * self.cam_w // 100, self.cam_h/2],       # Top-left
+            [20 * self.cam_w // 100, self.cam_h],       # bottom-left
+            [80 * self.cam_w // 100, self.cam_h],   # bottom-right
+        ], np.int32)
+        self.lane_mask_white = np.zeros((self.cam_h, self.cam_w), dtype=np.uint8)
+        cv2.fillPoly(self.lane_mask_white, [self.polygon_points_white], 255)
 
     def camera_callback(self, msg):
         # convert compressed image to cv2
@@ -146,12 +173,16 @@ class CameraDetectionNode(DTROS):
                                             cv2.CHAIN_APPROX_SIMPLE)
         return contours, hierarchy
     
-    def get_bounding_boxes(self, color, cv2_img):
+    def get_ground_bounding_boxes(self, color, cv2_img):
         # get the color mask
         color_mask = self.get_color_mask(color, cv2_img)
+        # only look at colors in the lane:
+        color_mask = cv2.bitwise_and(color_mask, self.lane_mask)
+        if color == Color.WHITE:
+            color_mask = cv2.bitwise_and(color_mask, self.lane_mask_white)
         # get the color contours
         contours, hierarchy = self.get_contours(color_mask)
-        # get the nearest bounding box (to the bottom middle of the image)
+        # get all the bounding boxes with a large area, and on the ground.
         bbs = []
         for contour in contours:
             area = cv2.contourArea(contour)
@@ -159,7 +190,8 @@ class CameraDetectionNode(DTROS):
                 x, y, w, h = cv2.boundingRect(contour)
                 contour_bb = (x, y, w, h)
                 contour_center = (x + w / 2, y + h / 2)
-                bbs.append({"bb": contour_bb, "center": contour_center})
+                if contour_center[1] > self.horizon:
+                    bbs.append({"bb": contour_bb, "center": contour_center})
         return bbs
     
     def project_point_to_ground(self, point):
@@ -208,9 +240,9 @@ class CameraDetectionNode(DTROS):
         if self.camera_image is None: return draw_image
         # get all the bounding boxes above a certain area for each color (white, red, blue)
         # also in the bottom half of the image
-        red_bbs = self.get_bounding_boxes(Color.RED, clean_image)
-        white_bbs = self.get_bounding_boxes(Color.WHITE, clean_image)
-        blue_bbs = self.get_bounding_boxes(Color.BLUE, clean_image)
+        red_bbs = self.get_ground_bounding_boxes(Color.RED, clean_image)
+        white_bbs = self.get_ground_bounding_boxes(Color.WHITE, clean_image)
+        blue_bbs = self.get_ground_bounding_boxes(Color.BLUE, clean_image)
         # project the bounding boxes (and their centers) to the ground
         red_bbs_p = self.project_bounding_boxes_to_ground(red_bbs)
         white_bbs_p = self.project_bounding_boxes_to_ground(white_bbs)
@@ -225,6 +257,10 @@ class CameraDetectionNode(DTROS):
         self.color_coords_topic.publish(json_coords)
         # draw the bounding boxes and their centers, with their center ground coordinates
         if self.draw_bounding_boxes:
+            cv2.line(draw_image, tuple(self.polygon_points[0]), tuple(self.polygon_points[3]), (0, 255, 0), 2)  # Left line
+            cv2.line(draw_image, tuple(self.polygon_points[1]), tuple(self.polygon_points[2]), (0, 255, 0), 2)  # Right line
+            cv2.line(draw_image, tuple(self.polygon_points_white[0]), tuple(self.polygon_points_white[3]), (0, 255, 0), 2)  # Left line
+            cv2.line(draw_image, tuple(self.polygon_points_white[1]), tuple(self.polygon_points_white[2]), (0, 255, 0), 2)  # Right line
             self.draw_bounding_boxes_to_image(draw_image, red_bbs, red_bbs_p, Color.RED)
             self.draw_bounding_boxes_to_image(draw_image, white_bbs, white_bbs_p, Color.WHITE)
             self.draw_bounding_boxes_to_image(draw_image, blue_bbs, blue_bbs_p, Color.BLUE)
