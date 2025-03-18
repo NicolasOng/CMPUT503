@@ -11,7 +11,6 @@ from std_msgs.msg import ColorRGBA, String
 from Color import Color
 import cv2
 from cv_bridge import CvBridge
-from move import MoveNode
 from camera_detection import CameraDetectionNode
 import threading
 import math
