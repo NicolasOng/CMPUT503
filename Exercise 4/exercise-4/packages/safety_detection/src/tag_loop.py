@@ -15,35 +15,51 @@ from camera_detection import CameraDetectionNode
 import threading
 import math
 
+from pid_controller import simple_pid, pid_controller_v_omega
+
 class TagLoop(DTROS):
     def __init__(self, node_name):
         super(TagLoop, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
-        # move node and controller node services
-        rospy.wait_for_service(f'/{self.vehicle_name}/rotate')
-        rospy.wait_for_service(f'/{self.vehicle_name}/pid_iteration')
-        self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
-        self.pid_iteration_request = rospy.ServiceProxy(f'/{self.vehicle_name}/pid_iteration', SetString)
+        # move node services
+        #rospy.wait_for_service(f'/{self.vehicle_name}/rotate')
+        #self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
 
-    def pid_iteration(self, rate, reset=False):
-        params = {
-            "rate": rate,
-            "reset": reset
+        # stuff for lane following
+        self.lane_error = None
+        self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
+        self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
+
+    def lane_error_callback(self, msg):
+        '''
+        lane_error = {
+            "lane_error": error
         }
-        params_json = json.dumps(params)
-        self.pid_iteration_request(params_json)
+        '''
+        le_json = msg.data
+        self.lane_error = json.loads(le_json)["lane_error"]
+    
+    def set_velocities(self, linear, rotational):
+        '''
+        sets the linear/rotational velocities of the Duckiebot
+        linear = m/s
+        rotational = radians/s
+        '''
+        self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
     
     def tag_loop(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
-            self.pid_iteration(rate_int)
+            v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
+            rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
+            self.set_velocities(v, omega)
             rate.sleep()
 
     def on_shutdown(self):
         # on shutdown,
-        pass
+        self.set_velocities(0, 0)
 
 if __name__ == '__main__':
     node = TagLoop(node_name='tag_loop')
