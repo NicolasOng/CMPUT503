@@ -12,6 +12,8 @@ import cv2
 from cv_bridge import CvBridge
 import dt_apriltags
 
+NO_TAG_ID = "-1"
+
 class CameraDetectionNode(DTROS):
     def __init__(self, node_name):
         super(CameraDetectionNode, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
@@ -29,11 +31,15 @@ class CameraDetectionNode(DTROS):
 
         # TODO PUBLISHERS NOT WORKING, ESP. TAG LIST. FIX
         # AprilTag Publishers
-        #self.tag_id = rospy.Publisher(f"/{self.vehicle_name}/tag_ids", String, queue_size=1)
+        self.tag_id_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_id", String, queue_size=1)
         #self.tag_center = rospy.Publisher(f"/{self.vehicle_name}/tag_center", String, queue_size=1)
         #self.tag_corners = rospy.Publisher(f"/{self.vehicle_name}/tag_corners", String, queue_size=1)
         #self_tag_list = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
-        #self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+        self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+
+        self.id_sub = rospy.Subscriber(f"/{self.vehicle_name}/tag_id", String, self.id_callback)
+
+        self.tag_id = None
 
         # AprilTag detector engine. Expensive to create/destroy, so create a single instance for class, call detect as needed
         self.at_detector = dt_apriltags.Detector()
@@ -141,6 +147,9 @@ class CameraDetectionNode(DTROS):
         ], np.int32)
         self.lane_mask_white = np.zeros((self.cam_h, self.cam_w), dtype=np.uint8)
         cv2.fillPoly(self.lane_mask_white, [self.polygon_points_white], 255)
+
+    def id_callback(self, msg):
+        self.tag_id = int(msg.data)
 
     def camera_callback(self, msg):
         # convert compressed image to cv2
@@ -385,16 +394,15 @@ class CameraDetectionNode(DTROS):
 
         # Convert image to grayscale
         image_grey = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
-
+        image_grey = cv2.GaussianBlur(image_grey, (5,5), 0)
 
         # MARTIN TODO 
         # 1) MORE IMAGE PREPROCESSING; ATAGs NOT DETECTED IN LIGHTING ON TRACK
         #       SOME IDEAS: decimate, reduce resolution, blur, etc.
         # 
-        # 2) FIX PUBLISHERS FOR ATAG PROCESSING, ESP. ALL DETECTED TAG LIST
-        #
-        # ........
-        # ........
+        # 2) FIX PUBLISHER FOR LIST OF ALL DETECTED TAGS
+        # 3) Keep track of last seen tag
+        #       - Have to erase last seen tag after stopping at red line
 
         # ApriltTag detector
         results = self.at_detector.detect(image_grey)
@@ -407,7 +415,8 @@ class CameraDetectionNode(DTROS):
         largest_tag_area = 0
 
         if len(results) == 0:
-            #self.tag_image.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
+            self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
+            self.tag_id_pub.publish(NO_TAG_ID)
             return draw_image
         
         # If multiple tags detected, find most prominent tag (largest by area)
@@ -420,6 +429,7 @@ class CameraDetectionNode(DTROS):
                     largest_tag_index = idx
                     largest_tag_area = area
 
+        # Order tags in list based on area (most prominent first), set list to empty if none detected
                 tags_list.append({"id" : r.tag_id, "center" : r.center, "corners" : r.corners})
 
         largest_tag = results[largest_tag_index]
@@ -437,10 +447,10 @@ class CameraDetectionNode(DTROS):
         # Publish data on all detected tags
         #self.tag_list.publish(json.dumps(tags_list))
         # Publish ID of most prominently detected tag
-        #self.tag_id.publish(id)  
+        self.tag_id_pub.publish(id)  
         
         # Publish image of most prominently detected tag
-        #self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
+        self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
                   
         return draw_image
         
@@ -462,6 +472,11 @@ class CameraDetectionNode(DTROS):
             # perform apriltags detection (?)
             draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
 
+            if self.tag_id == 21:
+                print("I see a stop sign; do something")
+            elif self.tag_id == -1:
+                print("No tag detected")
+                      
             # perform other detection (duckiebot from behind, pedestrians, etc) (?)
 
             # publish the image
@@ -476,7 +491,7 @@ class CameraDetectionNode(DTROS):
 
     def on_shutdown(self):
         # on shutdown
-        pass
+        print("terminate")
 
 if __name__ == '__main__':
     node = CameraDetectionNode(node_name='camera_detection_node')
