@@ -5,6 +5,7 @@
 # import required libraries
 import rospy
 from duckietown.dtros import DTROS, NodeType
+import json
 import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
@@ -33,17 +34,20 @@ class VehicleDetection(DTROS):
         self.fill_blob_detector_params()
         self.simple_blob_detector = cv2.SimpleBlobDetector_create(self.blob_detector_params)
         self.circle_img_pub = rospy.Publisher(f"/{self.vehicle_name}/circle_img", Image, queue_size=1)
-        # call navigation control node
+        self.other_bot_info_pub = rospy.Publisher(f"/{self.vehicle_name}/other_bot_info", String, queue_size=1)
 
-        # subscribe to camera feed
+        # robot position in the projected ground plane,
+        # below the center of the image by some distance (mm)
+        self.ground_w, self.ground_h = 1250, 1250
+        self.robot_x, self.robot_y = self.ground_w / 2, self.ground_h + 100
 
         # define other variables as needed
         self.img = None
 
         self.last_stamp = rospy.Time.now()
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
 
-        homography_file = np.load(os.path.join(script_dir, "homography.npz"))
+        homography_file = np.load(os.path.join(self.script_dir, "homography.npz"))
 
         # Access arrays by their keys
         self.homography_to_ground = homography_file["homography_to_ground"]
@@ -85,7 +89,8 @@ class VehicleDetection(DTROS):
 
         """
 
-        image_cv = self.bridge.compressed_imgmsg_to_cv2(image_msg, "bgr8")
+
+        image_cv = self.bridge.compressed_imgmsg_to_cv2(image_msg)
         self.img = image_cv
     
     def find_circle_grid(self, image_cv):
@@ -131,14 +136,46 @@ class VehicleDetection(DTROS):
 
                 if centers.shape[0] == 21:
                     # distance of the centers
-                    middle_column_center = centers[10] # 11th center is the middle column center of the 7x3 grid
-                    projected_center = cv2.perspectiveTransform(np.array([middle_column_center]).reshape(-1, 1, 2), self.homography_to_ground).ravel()
+                    middle_column_center = centers[17].squeeze() # 11th center is the middle column center of the 7x3 grid
+                    top_left = centers[0].squeeze()              # top left corner of the circle grid coord of pixel
+                    bottom_left = centers[14].squeeze()
+                    distance_top_bottom = (top_left[1] - bottom_left[1])  # height of circle grid in pixels
+
+                    # project the middle point to the ground
+                    proj_middle = self.project_point_to_ground([middle_column_center[0], middle_column_center[1] - 3.5*distance_top_bottom]) 
+
+                    # publish this as an error in the lane errors topic
+                    other_bot_msg = {
+                        "other_bot_coord": proj_middle
+                    }
+                    json_le = json.dumps(other_bot_msg)
+                    self.other_bot_info_pub.publish(json_le)
                     cv2.drawChessboardCorners(self.img, (7, 3), centers, detection)
-                    self.put_text(self.img, str(projected_center), (10, 30))
+                    self.put_text(self.img, str(proj_middle), (10, 30))
                 self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
             rate.sleep()
+    
+    def project_point_to_ground(self, point):
+        '''
+        point is a tuple of (x, y) coordinates
+        the point is relative to the bot.
+        '''
+        point = np.array([point], dtype=np.float32)
+        new_point = cv2.perspectiveTransform(point.reshape(-1, 1, 2), self.homography_to_ground)
+        new_point = new_point.ravel()
+        new_point = (new_point[0] - self.robot_x, -(new_point[1] - self.robot_y))
+        return new_point
+
 if __name__ == '__main__':
     # create the node
     node = VehicleDetection(node_name='april_tag_detector')
     node.loop()
     rospy.spin()
+
+"""
+Circle grid indices
+(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6)  # First row
+(1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6)  # Second row
+(2, 0), (2, 1), (2, 2), (2, 3), (2, 4), (2, 5), (2, 6)  # Third row
+
+"""
