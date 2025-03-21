@@ -62,6 +62,9 @@ blue_upper = np.array([135, 255, 255], np.uint8)
 yellow_lower = np.array([21, 100, 60*2.55], np.uint8)
 yellow_higher = np.array([33, 255, 100*2.55], np.uint8)
 
+orange_lower = np.array([30/2, 50*2.55, 30*2.55], np.uint8)
+orage_higher = np.array([36/2, 100*2.55, 100*2.55], np.uint8)
+
 white_lower = np.array([0, 0, 200], np.uint8)
 white_higher = np.array([180, 40, 255], np.uint8)
 
@@ -72,6 +75,7 @@ color_bounds = {
     Color.GREEN: (green_lower, green_upper),
     Color.YELLOW: (yellow_lower, yellow_higher),
     Color.WHITE: (white_lower, white_higher),
+    Color.ORANGE: (orange_lower, orage_higher)
 }
 
 # color to BGR dictionary
@@ -170,23 +174,6 @@ def get_contours(color_mask):
                                         cv2.CHAIN_APPROX_SIMPLE)
     return contours, hierarchy
 
-def get_bounding_boxes(color, cv2_img):
-    # get the color mask
-    color_mask = get_color_mask(color, cv2_img)
-    # get the color contours
-    contours, hierarchy = get_contours(color_mask)
-    # get the nearest bounding box (to the bottom middle of the image)
-    bbs = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if (area > 300): 
-            x, y, w, h = cv2.boundingRect(contour)
-            contour_bb = (x, y, w, h)
-            contour_center = (x + w / 2, y + h / 2)
-            if contour_center[1] > horizon:
-                    bbs.append({"bb": contour_bb, "center": contour_center})
-    return bbs
-
 """
 circle_points is from simple_blob_detector.detect(image_cv), converted to a list of (x, y) tuples
 
@@ -280,7 +267,7 @@ def find_circle_grid(image_cv):
     blob_detector_params = cv2.SimpleBlobDetector_Params()  # https://stackoverflow.com/questions/8076889/how-to-use-opencv-simpleblobdetector
     blob_detector_params.filterByArea = True
     blob_detector_params.minArea = 5  # pixels
-    blob_detector_params.maxArea = 100  # pixels
+    blob_detector_params.maxArea = 1000  # pixels
     ## Filter by circularity
     blob_detector_params.filterByCircularity = True
     blob_detector_params.minCircularity = 0.7
@@ -316,6 +303,33 @@ def find_circle_grid(image_cv):
     (circle_grid_width, circle_grid_height) = approximate_duckiebot_circlegrid_dim(res)
     print(f'circle grid width: {circle_grid_width}, circle grid height: {circle_grid_height}')
     return (detection, centers)
+
+def find_duckies(image_cv):
+    blob_detector_params = cv2.SimpleBlobDetector_Params()  # https://stackoverflow.com/questions/8076889/how-to-use-opencv-simpleblobdetector
+    blob_detector_params.filterByArea = True
+    blob_detector_params.minArea = 50  # pixels
+    blob_detector_params.maxArea = 1000  # pixels
+    ## Filter by circularity
+    blob_detector_params.filterByCircularity = True
+    blob_detector_params.minCircularity = 0.7
+
+    ## Filter by convexity
+    blob_detector_params.filterByConvexity = True
+    blob_detector_params.minConvexity = 0.8
+
+    ## Filter by inertia
+    blob_detector_params.filterByInertia = True
+    blob_detector_params.minInertiaRatio = 0.8
+
+    blob_detector_params.filterByColor = True
+    blob_detector_params.blobColor = 0
+
+    simple_blob_detector = cv2.SimpleBlobDetector_create(blob_detector_params)
+    #simple_blob_detector = cv2.SimpleBlobDetector_create(cv2.SimpleBlobDetector_Params())
+
+    res = simple_blob_detector.detect(image_cv)
+    image_cv = get_color_mask(Color.ORANGE, image_cv)
+    return image_cv
 
 def put_text(img, text, position):
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -377,9 +391,10 @@ image = undistort_image(image)
 # blur the image
 #image = cv2.GaussianBlur(image, (5, 5), 0)
 # greyscale the image
-image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+#image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-vehicle_detection(image)
+#vehicle_detection(image)
+image = find_duckies(image)
 cv2.imshow("PNG Image", image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
