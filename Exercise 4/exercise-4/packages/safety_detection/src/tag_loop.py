@@ -19,7 +19,7 @@ from pid_controller import simple_pid, pid_controller_v_omega
 
 class TagLoop(DTROS):
     def __init__(self, node_name):
-        super(TagLoop, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
+        super(TagLoop, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         # move node services
@@ -54,14 +54,15 @@ class TagLoop(DTROS):
         red = ColorRGBA(r=255, g=0, b=0, a=255)
         white = ColorRGBA(r=255, g=255, b=255, a=255)
         green = ColorRGBA(r=0, g=255, b=0, a=255)
-        yellow = ColorRGBA(r=255, g=255, b=0, a=255)
+        blue = ColorRGBA(r=0, g=0, b=255, a=255)
         self.default = [white, red, white, red, white]
         self.all_red = [red] * 5
         self.all_green = [green] * 5
-        self.all_yellow = [yellow] * 5
+        self.all_blue = [blue] * 5
+        self.all_white = [white] * 5
         self.tag_to_led = {
             self.stop_sign_tag_id: self.all_red,
-            self.t_intersection_tag_id: self.all_yellow,
+            self.t_intersection_tag_id: self.all_blue,
             self.ualberta_tag_id: self.all_green
         }
 
@@ -130,8 +131,7 @@ class TagLoop(DTROS):
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
 
     def update_leds(self):
-        self.led_command.publish(LEDPattern(colors=self.all_yellow))
-        pattern = self.default
+        pattern = self.all_white
         if self.last_detected_tag_id:
             pattern = self.tag_to_led[self.last_detected_tag_id]
         self.led_command.publish(LEDPattern(colors=pattern))
