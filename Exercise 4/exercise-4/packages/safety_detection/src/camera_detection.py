@@ -29,12 +29,9 @@ class CameraDetectionNode(DTROS):
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
         self.camera_detection_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_detection_image", Image, queue_size=1)
 
-        # TODO PUBLISHERS NOT WORKING, ESP. TAG LIST. FIX
         # AprilTag Publishers
         self.tag_id_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_id", String, queue_size=1)
-        #self.tag_center = rospy.Publisher(f"/{self.vehicle_name}/tag_center", String, queue_size=1)
-        #self.tag_corners = rospy.Publisher(f"/{self.vehicle_name}/tag_corners", String, queue_size=1)
-        #self_tag_list = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
+        self_tag_list_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
         self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
 
         self.id_sub = rospy.Subscriber(f"/{self.vehicle_name}/tag_id", String, self.id_callback)
@@ -396,21 +393,10 @@ class CameraDetectionNode(DTROS):
         image_grey = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
         image_grey = cv2.GaussianBlur(image_grey, (5,5), 0)
 
-        # MARTIN TODO 
-        # 1) MORE IMAGE PREPROCESSING; ATAGs NOT DETECTED IN LIGHTING ON TRACK
-        #       SOME IDEAS: decimate, reduce resolution, blur, etc.
-        # 
-        # 2) FIX PUBLISHER FOR LIST OF ALL DETECTED TAGS
-        # 3) Keep track of last seen tag
-        #       - Have to erase last seen tag after stopping at red line
-
         # ApriltTag detector
         results = self.at_detector.detect(image_grey)
 
-        #print("Number of detected tags: ", len(results))
-
         tags_list = []
-
         largest_tag_index = 0
         largest_tag_area = 0
 
@@ -418,9 +404,9 @@ class CameraDetectionNode(DTROS):
             self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
             self.tag_id_pub.publish(NO_TAG_ID)
             return draw_image
-        
         # If multiple tags detected, find most prominent tag (largest by area)
-        if len(results) > 1:
+        #elif len(results) > 1:
+        else:
             for idx, r in enumerate(results):
                 tl = r.corners[0].astype(int)
                 br = r.corners[2].astype(int)
@@ -430,10 +416,14 @@ class CameraDetectionNode(DTROS):
                     largest_tag_area = area
 
         # Order tags in list based on area (most prominent first), set list to empty if none detected
-                tags_list.append({"id" : r.tag_id, "center" : r.center, "corners" : r.corners})
+                tags_list.append({"id" : r.tag_id, 
+                                  "center" : r.center, 
+                                  "corners" : r.corners,
+                                  "area" : area})
+                
+            tags_list = sorted(tags_list, key=lambda dict: dict["area"], reverse=True)
 
         largest_tag = results[largest_tag_index]
-
         top_left = largest_tag.corners[0].astype(int)
         bottom_right = largest_tag.corners[2].astype(int)
         center = largest_tag.center.astype(int)
@@ -442,14 +432,8 @@ class CameraDetectionNode(DTROS):
         if self.draw_atag_toggle: 
             self.draw_atag_features(draw_image, top_left, bottom_right, id, center)
 
-
-        # TODO FIX PUBLISHERS
-        # Publish data on all detected tags
         #self.tag_list.publish(json.dumps(tags_list))
-        # Publish ID of most prominently detected tag
         self.tag_id_pub.publish(id)  
-        
-        # Publish image of most prominently detected tag
         self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
                   
         return draw_image
@@ -470,7 +454,7 @@ class CameraDetectionNode(DTROS):
             draw_image = self.perform_simple_lane_detection(clean_image.copy(), draw_image)
             # peform colored tape detection
             draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
-            # perform apriltags detection (?)
+            # perform apriltags detection
             draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
 
             if self.tag_id == 21:
