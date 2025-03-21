@@ -28,7 +28,8 @@ class Pedestrians(DTROS):
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # ground color detection
-        self.closest_blue = None
+        self.closest_blue = float('inf')
+        self.blue_cooldown = 0
         self.color_coords_topic = rospy.Subscriber(f"/{self.vehicle_name}/color_coords", String, self.color_coords_callback)
 
         # TODO: pedestrian detection
@@ -60,7 +61,7 @@ class Pedestrians(DTROS):
         # get the color coords
         color_coords = json.loads(msg.data)
         # get the closest blue color
-        self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1]) if color_coords["blue"] else None
+        self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1])['center'][1] if color_coords["blue"] else float('inf')
     
     def set_velocities(self, linear, rotational):
         '''
@@ -74,12 +75,15 @@ class Pedestrians(DTROS):
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
+            start_time = rospy.Time.now()
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
             rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
             self.set_velocities(v, omega)
             # if the bot is at a blue tape,
-            if self.closest_blue['center'] < 20:
+            if self.closest_blue < 200 and self.blue_cooldown == 0:
+                self.blue_cooldown = 1
+                rospy.loginfo(f'detected blue line, stopping for 1s. pedestrians detected: {self.pedestrians_detected}')
                 # stop the bot
                 self.set_velocities(0, 0)
                 # wait for 1s,
@@ -87,7 +91,10 @@ class Pedestrians(DTROS):
                 # and continue waiting until no pedestrians are detected
                 while self.pedestrians_detected:
                     rate.sleep()
-            # TODO: possible pitfall: the bot might stop at the blue tap repeatedly - test to see if this happens
+            # update the cooldowns
+            end_time = rospy.Time.now()
+            dt = (end_time - start_time).to_sec()
+            self.blue_cooldown = max(0, self.blue_cooldown - dt)
             rate.sleep()
 
     def on_shutdown(self):
