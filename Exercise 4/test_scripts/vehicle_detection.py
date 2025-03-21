@@ -202,12 +202,15 @@ def remove_outliers(points, distance_threshold):
     points = np.array([p.pt for p in points])
     # get the mean of the points
 
-    mean = np.mean(points, axis=0)  # dim = 2
-    # get the distance of each point from the mean
-    distances = np.linalg.norm(points - mean, axis=1)
-    # get the points that are within the distance threshold
-    mask = distances < distance_threshold
-    return points[mask]
+    good_points = []
+    for i in range(len(points)):
+        for j in range(len(points)):
+            if i == j:
+                continue
+            if np.linalg.norm(points[i] - points[j]) < distance_threshold:
+                good_points.append(points[i])
+                break
+    return good_points
 
 def project_point_to_ground(point):
     '''
@@ -287,7 +290,7 @@ def find_circle_grid(image_cv):
     #simple_blob_detector = cv2.SimpleBlobDetector_create(cv2.SimpleBlobDetector_Params())
 
     res = simple_blob_detector.detect(image_cv)
-    res = remove_outliers(res, 100)
+    res = remove_outliers(res, 200)
     print(f'Found {len(res)} blobs')
     for r in res:
         # draw the point on the image
@@ -393,8 +396,8 @@ image = undistort_image(image)
 # greyscale the image
 #image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-#vehicle_detection(image)
-image = find_duckies(image)
+vehicle_detection(image)
+#image = find_duckies(image)
 cv2.imshow("PNG Image", image)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
