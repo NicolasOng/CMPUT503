@@ -2,7 +2,9 @@
 
   <group ns="$(arg veh)">
 
-    <node pkg="safety_detection" type="MY_NODE.py" name="MAY_NODE_NAME" output="screen"/>
+    <node pkg="safety_detection" type="camera_detection.py" name="camera_detection_node" output="screen"/>
+    <node pkg="safety_detection" type="odometry.py" name="odometry_node" output="screen"/>
+    <node pkg="safety_detection" type="tag_loop.py" name="tag_loop" output="screen"/>
 
   </group>
 
