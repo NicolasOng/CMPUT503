@@ -442,7 +442,6 @@ class CameraDetectionNode(DTROS):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
-            if self.camera_image is None: continue
             # create a copy of the camera image
             image = self.camera_image.copy()
             # undistort camera image
@@ -456,14 +455,7 @@ class CameraDetectionNode(DTROS):
             draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
             # perform apriltags detection
             draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
-
-            if self.tag_id == 21:
-                print("I see a stop sign; do something")
-            elif self.tag_id == -1:
-                print("No tag detected")
-                      
-            # perform other detection (duckiebot from behind, pedestrians, etc) (?)
-
+                
             # publish the image
             self.camera_detection_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
             # end the loop iteration
