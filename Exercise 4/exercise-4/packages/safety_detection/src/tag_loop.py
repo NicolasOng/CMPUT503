@@ -156,9 +156,6 @@ class TagLoop(DTROS):
         rotational = radians/s
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
-
-    def update_leds(self):
-        self.led_command.publish(self.tag_to_led[self.last_detected_tag_id])
     
     def tag_loop(self):
         rate_int = 10
@@ -166,14 +163,14 @@ class TagLoop(DTROS):
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
             # update the leds
-            self.update_leds()
+            self.led_command.publish(self.tag_to_led[self.last_detected_tag_id])
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
             rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
             self.set_velocities(v, omega)
             # if the bot is at a red tape,
             if self.closest_red < 200 and self.red_cooldown == 0:
-                self.red_cooldown = 1
+                self.red_cooldown = 5
                 rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
                 # stop the bot
                 self.set_velocities(0, 0)
@@ -181,20 +178,24 @@ class TagLoop(DTROS):
                 rospy.sleep(self.tag_time_dict[self.last_detected_tag_id])
                 # and reset the last detected tag id
                 self.last_detected_tag_id = self.none_tag_id
+                # reset the start time, so time spent waiting is not counted
+                start_time = rospy.Time.now()
             # if the bot is at a white tape,
             if self.closest_white < 200 and self.white_cooldown == 0:
-                self.white_cooldown = 1
+                self.white_cooldown = 5
                 rospy.loginfo(f'detected white line, rotating')
                 # stop the bot
                 self.set_velocities(0, 0)
                 # and rotate the bot
-                self.rotate_request(self.rot_dir * math.pi/2, 0.5)
+                self.rotate(self.rot_dir * math.pi/2, 0.5)
+                # reset the start time, so time spent waiting is not counted
+                start_time = rospy.Time.now()
+            rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()
             dt = (end_time - start_time).to_sec()
             self.red_cooldown = max(0, self.red_cooldown - dt)
             self.white_cooldown = max(0, self.white_cooldown - dt)
-            rate.sleep()
 
     def on_shutdown(self):
         # on shutdown,

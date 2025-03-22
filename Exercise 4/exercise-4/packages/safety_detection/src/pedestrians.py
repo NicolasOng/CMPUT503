@@ -34,6 +34,7 @@ class Pedestrians(DTROS):
 
         # TODO: pedestrian detection
         self.pedestrians_detected = False
+        self.pedestrians_topic = rospy.Subscriber(f"/{self.vehicle_name}/pedestrians", String, self.pedestrians_callback)
 
     def lane_error_callback(self, msg):
         '''
@@ -63,6 +64,15 @@ class Pedestrians(DTROS):
         # get the closest blue color
         self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1])['center'][1] if color_coords["blue"] else float('inf')
     
+    def pedestrians_callback(self, msg):
+        '''
+        pedestrians = {
+            "pedestrians": bool
+        }
+        '''
+        pedestrians_json = msg.data
+        self.pedestrians_detected = json.loads(pedestrians_json)["pedestrians"]
+    
     def set_velocities(self, linear, rotational):
         '''
         sets the linear/rotational velocities of the Duckiebot
@@ -78,11 +88,11 @@ class Pedestrians(DTROS):
             start_time = rospy.Time.now()
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
-            rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
             self.set_velocities(v, omega)
+            rospy.loginfo(f'closest blue: {self.closest_blue}, blue cooldown: {self.blue_cooldown}')
             # if the bot is at a blue tape,
             if self.closest_blue < 200 and self.blue_cooldown == 0:
-                self.blue_cooldown = 1
+                self.blue_cooldown = 5
                 rospy.loginfo(f'detected blue line, stopping for 1s. pedestrians detected: {self.pedestrians_detected}')
                 # stop the bot
                 self.set_velocities(0, 0)
@@ -91,11 +101,13 @@ class Pedestrians(DTROS):
                 # and continue waiting until no pedestrians are detected
                 while self.pedestrians_detected:
                     rate.sleep()
+                # reset the start time, so time is not counted while waiting for pedestrians
+                start_time = rospy.Time.now()
+            rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()
             dt = (end_time - start_time).to_sec()
             self.blue_cooldown = max(0, self.blue_cooldown - dt)
-            rate.sleep()
 
     def on_shutdown(self):
         # on shutdown,
