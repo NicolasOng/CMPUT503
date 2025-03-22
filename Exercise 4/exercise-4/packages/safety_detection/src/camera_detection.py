@@ -442,6 +442,7 @@ class CameraDetectionNode(DTROS):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
+            if self.camera_image is None: continue
             # create a copy of the camera image
             image = self.camera_image.copy()
             # undistort camera image
