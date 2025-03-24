@@ -216,16 +216,18 @@ class VehicleDetection(DTROS):
             # distance of the centers
             middle_column_center = circle_points[17] # 11th center is the middle column center of the 7x3 grid
             # project the middle point to the ground
-            proj_middle = self.project_point_to_ground([middle_column_center[0], middle_column_center[1] + 4*grid_height]) 
-            cv2.circle(self.img, tuple(map(int, (middle_column_center[0], middle_column_center[1] + 4*grid_height))), 5, (0, 0, 255), -1)
+            #proj_middle = self.project_points2([middle_column_center[0], middle_column_center[1] + 3.5*grid_height]) 
+            proj_middle = self.project_point_to_ground([middle_column_center[0], middle_column_center[1] + 3.5*grid_height]) 
+            cv2.circle(self.img, tuple(map(int, (middle_column_center[0], middle_column_center[1] + 3.5*grid_height))), 5, (0, 0, 255), -1)
         else:
             assert len(circle_points) > 0
             # get the mean of the points
             mean_point = np.mean(circle_points, axis=0) # dim = 2
 
             # draw mean point
-            cv2.circle(self.img, tuple(map(int, [mean_point[0], mean_point[1] + 4*grid_height])), 5, (0, 0, 255), -1)
-            proj_middle = self.project_point_to_ground([mean_point[0], mean_point[1] +4*grid_height])
+            cv2.circle(self.img, tuple(map(int, [mean_point[0], mean_point[1] + 3.5*grid_height])), 5, (0, 0, 255), -1)
+            #proj_middle = self.project_points2([mean_point[0], mean_point[1] + 3.5*grid_height])
+            proj_middle = self.project_point_to_ground([mean_point[0], mean_point[1] + 3.5*grid_height])
         return proj_middle  # dim 2
 
     def find_circle_grid(self, image_cv):
