@@ -200,6 +200,15 @@ class TagLoop(DTROS):
                 break
             rate.sleep()
         self.set_velocities(0, 0)
+
+    def rotate_test(self, radians, speed):
+        print("WHY AREN'T YOU WORKING")
+        rate = rospy.Rate(1)
+        rate.sleep()
+        for i in range(5):
+            rospy.loginfo(f'rotate cmd sent')
+            self.car_cmd.publish(Twist2DStamped(v=speed, omega=radians))
+        rate.sleep()
     
     def tag_loop(self):
         rate_int = 10
