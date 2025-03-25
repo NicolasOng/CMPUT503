@@ -33,6 +33,7 @@ class CameraDetectionNode(DTROS):
         self.tag_id_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_id", String, queue_size=1)
         self_tag_list_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
         self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+        self.duckies_pub = rospy.Publisher(f"/{self.vehicle_name}/duckies_info", String, queue_size=1)
 
         self.id_sub = rospy.Subscriber(f"/{self.vehicle_name}/tag_id", String, self.id_callback)
 
@@ -93,6 +94,8 @@ class CameraDetectionNode(DTROS):
         self.white_lower = np.array([0, 0, 180], np.uint8)
         self.white_higher = np.array([180, 50, 255], np.uint8)
 
+        self.orange_lower = np.array([30/2, 50*2.55, 30*2.55], np.uint8)
+        self.orage_higher = np.array([36/2, 100*2.55, 100*2.55], np.uint8)
         # color bounds
         self.color_bounds = {
             Color.RED: (self.red_lower, self.red_upper),
@@ -100,6 +103,7 @@ class CameraDetectionNode(DTROS):
             Color.GREEN: (self.green_lower, self.green_upper),
             Color.YELLOW: (self.yellow_lower, self.yellow_higher),
             Color.WHITE: (self.white_lower, self.white_higher),
+            Color.ORANGE: (self.orange_lower, self.orage_higher),
         }
 
         # color to BGR dictionary
@@ -110,12 +114,14 @@ class CameraDetectionNode(DTROS):
             Color.WHITE: (255, 255, 255),
             Color.YELLOW: (0, 255, 255),
             Color.BLACK: (0, 0, 0),
+            Color.ORANGE: (0, 165, 255)
         }
         
         # Draw Toggles
         self.draw_lane_detection = True
         self.draw_bounding_boxes = True
         self.draw_atag_toggle = True
+        self.draw_duckies = True
 
         # if the bot puts the white line on the right or left
         self.white_on_right = True
@@ -437,6 +443,40 @@ class CameraDetectionNode(DTROS):
         self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
                   
         return draw_image
+    
+    def perform_duckie_detection(self, clean_image, draw_image):
+        mask = self.get_color_mask(Color.ORANGE, clean_image)  # (h, w)
+        duckie_exist = False
+        min_point = None    
+
+        duckie_exist = bool(np.any(mask))  # check if any white pixel exists in mask
+
+        # find the (x, y) coordinates of the white pixel in mask with minimum y value
+        if duckie_exist:
+            y, x = np.where(mask)
+            min_y_index = np.argmin(y)
+            min_y = y[min_y_index]
+            min_x = x[min_y_index]
+            min_point = (min_x, min_y)
+            rospy.loginfo(f"detect duckie at {min_point}")
+
+            min_point = self.project_point_to_ground(min_point)
+
+        msg = {
+            "duckie_exist": duckie_exist,
+            "min_point": min_point
+        }
+        self.duckies_pub.publish(json.dumps(msg))
+
+        if self.draw_duckies:
+            contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area > 1000:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    cv2.rectangle(draw_image, (x, y), (x + w, y + h), (0, 165, 255), 2)
+        
+        return draw_image 
         
     def perform_camera_detection(self):
         rate = rospy.Rate(10)
@@ -456,6 +496,9 @@ class CameraDetectionNode(DTROS):
             draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
             # perform apriltags detection
             draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
+
+            # perform duckie detection
+            draw_image = self.perform_duckie_detection(clean_image.copy(), draw_image)
                 
             # publish the image
             self.camera_detection_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
