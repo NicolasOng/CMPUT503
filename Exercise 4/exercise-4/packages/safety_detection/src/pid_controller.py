@@ -2,7 +2,7 @@ import math
 
 # PID controller variables
 simple_pid = {
-    "kp": -0.025,
+    "kp": -0.02,
     "ki": 0,
     "kd": -0.0125,
     "previous_error": 0,
@@ -35,7 +35,7 @@ def pid_controller_v_omega(error, pid_values, rate, reset=False):
     omega = None
     if error is not None:
         omega = pid_controller(pid_values, error, dt, reset=reset)
-        clamp_value = math.pi * 1.25
+        clamp_value = math.pi * 5
         omega = max(-clamp_value, min(omega, clamp_value))
     # return the calculated v and omega
     if error is None:

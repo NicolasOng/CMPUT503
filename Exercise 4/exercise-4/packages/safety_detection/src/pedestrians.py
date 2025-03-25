@@ -92,15 +92,16 @@ class Pedestrians(DTROS):
             self.set_velocities(v, omega)
             rospy.loginfo(f'closest blue: {self.closest_blue}, blue cooldown: {self.blue_cooldown}')
             # if the bot is at a blue tape,
-            if self.closest_blue < 200 and self.blue_cooldown == 0:
+            if self.closest_blue < 250 and self.blue_cooldown == 0:
                 self.blue_cooldown = 5
                 rospy.loginfo(f'detected blue line, stopping for 1s. pedestrians detected: {self.pedestrians_detected}')
                 # stop the bot
                 self.set_velocities(0, 0)
                 # wait for 1s,
-                rospy.sleep(1)
+                rospy.sleep(3)
                 # and continue waiting until no pedestrians are detected
-                while self.pedestrians_detected:
+                while self.pedestrians_detected and not rospy.is_shutdown():
+                    rospy.loginfo(f'pedestrians detected: {self.pedestrians_detected}')
                     rate.sleep()
                 # reset the start time, so time is not counted while waiting for pedestrians
                 start_time = rospy.Time.now()
@@ -112,6 +113,9 @@ class Pedestrians(DTROS):
 
     def on_shutdown(self):
         # on shutdown,
+        self.set_velocities(0, 0)
+        self.set_velocities(0, 0)
+        self.set_velocities(0, 0)
         self.set_velocities(0, 0)
 
 if __name__ == '__main__':

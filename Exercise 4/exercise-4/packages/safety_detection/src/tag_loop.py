@@ -169,6 +169,7 @@ class TagLoop(DTROS):
         linear = m/s
         rotational = radians/s
         '''
+        rospy.loginfo(f'linear: {linear}, omega: {rotational}')
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
 
     def pause(self, seconds):
@@ -209,14 +210,14 @@ class TagLoop(DTROS):
             self.led_command.publish(self.tag_to_led[self.last_detected_tag_id])
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
-            rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
+            #rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
             self.set_velocities(v, omega)
             # if the bot is at a red tape,
-            if self.closest_red < 200 and self.red_cooldown == 0:
-                self.red_cooldown = 5
-                rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
+            if self.closest_red < 200 and self.red_cooldown == 0 and True:
                 # stop the bot
                 self.pause(0.5)
+                self.red_cooldown = 5
+                rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
                 # and wait for some amount of time, depending on the last seen tag id.
                 rospy.sleep(self.tag_time_dict[self.last_detected_tag_id])
                 # and reset the last detected tag id
@@ -225,11 +226,11 @@ class TagLoop(DTROS):
                 start_time = rospy.Time.now()
                 rospy.loginfo(f'done red line operations')
             # if the bot is at a white tape,
-            if self.closest_white < 200 and self.white_cooldown == 0:
-                self.white_cooldown = 5
-                rospy.loginfo(f'detected white line, rotating')
+            if self.closest_white < 200 and self.white_cooldown == 0 and True:
                 # stop the bot
                 self.pause(2)
+                self.white_cooldown = 5
+                rospy.loginfo(f'detected white line, rotating')
                 # and rotate the bot
                 self.rotate(math.pi/2 * 0.5, math.pi * 2)
                 self.pause(2)

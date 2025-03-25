@@ -76,11 +76,11 @@ class CameraDetectionNode(DTROS):
         hr = 40
         sr = 50
         vr = 50
-        red_hsv = np.array([0, 144, 255])  # rGB: 255, 111, 111
-        self.red_lower = np.array([max(0, red_hsv[0] - hr), max(0, red_hsv[1] - sr), max(0, red_hsv[2] - vr)])
-        self.red_upper = np.array([min(179, red_hsv[0] + hr), min(255, red_hsv[1] + sr), min(255, red_hsv[2] + vr)])
-        #self.red_lower = np.array([136, 87, 111], np.uint8)
-        #self.red_upper = np.array([180, 255, 255], np.uint8)
+        #red_hsv = np.array([0, 144, 255])  # rGB: 255, 111, 111
+        #self.red_lower = np.array([max(0, red_hsv[0] - hr), max(0, red_hsv[1] - sr), max(0, red_hsv[2] - vr)])
+        #self.red_upper = np.array([min(179, red_hsv[0] + hr), min(255, red_hsv[1] + sr), min(255, red_hsv[2] + vr)])
+        self.red_lower = np.array([136, 87, 111], np.uint8)
+        self.red_upper = np.array([180, 255, 255], np.uint8)
 
         self.green_lower = np.array([34, 52, 72], np.uint8)
         self.green_upper = np.array([82, 255, 255], np.uint8)
@@ -447,9 +447,18 @@ class CameraDetectionNode(DTROS):
     def perform_duckie_detection(self, clean_image, draw_image):
         mask = self.get_color_mask(Color.ORANGE, clean_image)  # (h, w)
         duckie_exist = False
-        min_point = None    
+        min_point = None   
 
-        duckie_exist = bool(np.any(mask))  # check if any white pixel exists in mask
+        big_contours = []
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 1000:
+                x, y, w, h = cv2.boundingRect(contour)
+                big_contours.append((x, y, w, h))
+                cv2.rectangle(draw_image, (x, y), (x + w, y + h), (0, 165, 255), 2) 
+
+        duckie_exist = len(big_contours) > 0
 
         # find the (x, y) coordinates of the white pixel in mask with minimum y value
         if duckie_exist:
@@ -469,12 +478,9 @@ class CameraDetectionNode(DTROS):
         self.duckies_pub.publish(json.dumps(msg))
 
         if self.draw_duckies:
-            contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            for contour in contours:
-                area = cv2.contourArea(contour)
-                if area > 1000:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    cv2.rectangle(draw_image, (x, y), (x + w, y + h), (0, 165, 255), 2)
+            for contour in big_contours:
+                x, y, w, h = contour
+                cv2.rectangle(draw_image, (x, y), (x + w, y + h), (0, 165, 255), 2)
         
         return draw_image 
         
