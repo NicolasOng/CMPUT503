@@ -95,7 +95,7 @@ class CameraDetectionNode(DTROS):
         self.white_higher = np.array([180, 50, 255], np.uint8)
 
         self.orange_lower = np.array([30/2, 50*2.55, 30*2.55], np.uint8)
-        self.orage_higher = np.array([36/2, 100*2.55, 100*2.55], np.uint8)
+        self.orange_higher = np.array([36/2, 100*2.55, 100*2.55], np.uint8)
         # color bounds
         self.color_bounds = {
             Color.RED: (self.red_lower, self.red_upper),
@@ -103,7 +103,7 @@ class CameraDetectionNode(DTROS):
             Color.GREEN: (self.green_lower, self.green_upper),
             Color.YELLOW: (self.yellow_lower, self.yellow_higher),
             Color.WHITE: (self.white_lower, self.white_higher),
-            Color.ORANGE: (self.orange_lower, self.orage_higher),
+            Color.ORANGE: (self.orange_lower, self.orange_higher),
         }
 
         # color to BGR dictionary
