@@ -7,3 +7,4 @@ class Color:
     YELLOW = 3
     WHITE = 4
     BLACK = 5
+    ORANGE = 6

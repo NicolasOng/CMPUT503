@@ -32,9 +32,9 @@ class Pedestrians(DTROS):
         self.blue_cooldown = 0
         self.color_coords_topic = rospy.Subscriber(f"/{self.vehicle_name}/color_coords", String, self.color_coords_callback)
 
-        # TODO: pedestrian detection
+        # pedestrian detection
         self.pedestrians_detected = False
-        self.pedestrians_topic = rospy.Subscriber(f"/{self.vehicle_name}/pedestrians", String, self.pedestrians_callback)
+        self.pedestrians_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckies_info", String, self.pedestrians_callback)
 
     def lane_error_callback(self, msg):
         '''
@@ -67,11 +67,12 @@ class Pedestrians(DTROS):
     def pedestrians_callback(self, msg):
         '''
         pedestrians = {
-            "pedestrians": bool
+            "duckie_exist": bool,
+            "min_point": float
         }
         '''
         pedestrians_json = msg.data
-        self.pedestrians_detected = json.loads(pedestrians_json)["pedestrians"]
+        self.pedestrians_detected = json.loads(pedestrians_json)["duckie_exist"]
     
     def set_velocities(self, linear, rotational):
         '''

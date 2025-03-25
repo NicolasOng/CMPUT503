@@ -22,10 +22,10 @@ class TagLoop(DTROS):
         super(TagLoop, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
-        # move node services
-        rospy.wait_for_service(f'/{self.vehicle_name}/rotate')
-        self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
-        rospy.loginfo('rotate service is setup')
+        # odometry topic
+        self.ctheta = 0
+        self.cpos = 0
+        self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/odometry", String, self.odometry_callback)
 
         self.outside = True
 
@@ -39,7 +39,7 @@ class TagLoop(DTROS):
 
         # tag detection
         self.i_stop_sign_tag_id, self.i_t_intersection_tag_id, self.i_ualberta_tag_id = 21, 50, 94
-        self.o_stop_sign_tag_id, self.o_t_intersection_tag_id, self.o_ualberta_tag_id = 22, 133, 93
+        self.o_stop_sign_tag_id, self.o_t_intersection_tag_id, self.o_ualberta_tag_id = 22, 15, 93
         if self.outside:
             self.stop_sign_tag_id, self.t_intersection_tag_id, self.ualberta_tag_id = self.o_stop_sign_tag_id, self.o_t_intersection_tag_id, self.o_ualberta_tag_id
         else:
@@ -110,6 +110,18 @@ class TagLoop(DTROS):
         tag_list = json.loads(msg.data)
         # get the currently detected tag id with the largest area
         self.last_detected_tag_id = tag_list[0]["id"]
+    
+    def odometry_callback(self, msg):
+        '''
+        odometry_data = {
+            "cpos": self.cpos,
+            "ctheta": self.ctheta,
+            ...
+        }
+        '''
+        odometry_data = json.loads(msg.data)
+        self.ctheta = odometry_data["ctheta"]
+        self.cpos = odometry_data["cpos"]
 
     def tag_id_callback(self, msg):
         '''
@@ -140,6 +152,7 @@ class TagLoop(DTROS):
         # get the closest white color
         self.closest_white = min(color_coords["white"], key=lambda item: item['center'][1])['center'][1] if color_coords["white"] else float('inf')
     
+    '''
     def rotate(self, radians, speed, leds=False):
         params = {
             "radians": radians,
@@ -148,6 +161,7 @@ class TagLoop(DTROS):
         }
         params_json = json.dumps(params)
         self.rotate_request(params_json)
+    '''
     
     def set_velocities(self, linear, rotational):
         '''
@@ -156,6 +170,35 @@ class TagLoop(DTROS):
         rotational = radians/s
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
+
+    def pause(self, seconds):
+        '''
+        seconds should be positive
+        '''
+        rate = rospy.Rate(10)
+        start_time = rospy.Time.now()
+        while not rospy.is_shutdown():
+            self.set_velocities(0, 0)
+            cur_time = rospy.Time.now()
+            if (cur_time - start_time).to_sec() >= seconds:
+                break
+            rate.sleep()
+
+    def rotate(self, radians, speed):
+        '''
+        radians should be positive.
+        speed can be positive for clockwise,
+        negative for counter-clockwise
+        '''
+        starting_ctheta = self.ctheta
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.set_velocities(0, speed)
+            cur_radians = self.ctheta - starting_ctheta
+            if cur_radians >= radians:
+                break
+            rate.sleep()
+        self.set_velocities(0, 0)
     
     def tag_loop(self):
         rate_int = 10
@@ -173,23 +216,26 @@ class TagLoop(DTROS):
                 self.red_cooldown = 5
                 rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
                 # stop the bot
-                self.set_velocities(0, 0)
+                self.pause(0.5)
                 # and wait for some amount of time, depending on the last seen tag id.
                 rospy.sleep(self.tag_time_dict[self.last_detected_tag_id])
                 # and reset the last detected tag id
                 self.last_detected_tag_id = self.none_tag_id
                 # reset the start time, so time spent waiting is not counted
                 start_time = rospy.Time.now()
+                rospy.loginfo(f'done red line operations')
             # if the bot is at a white tape,
             if self.closest_white < 200 and self.white_cooldown == 0:
                 self.white_cooldown = 5
                 rospy.loginfo(f'detected white line, rotating')
                 # stop the bot
-                self.set_velocities(0, 0)
+                self.pause(2)
                 # and rotate the bot
-                self.rotate(self.rot_dir * math.pi/2, 0.5)
+                self.rotate(math.pi/2 * 0.5, math.pi * 2)
+                self.pause(2)
                 # reset the start time, so time spent waiting is not counted
                 start_time = rospy.Time.now()
+                rospy.loginfo(f'done white line operations')
             rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()
