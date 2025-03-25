@@ -2,9 +2,9 @@ import math
 
 # PID controller variables
 simple_pid = {
-    "kp": -0.02,
+    "kp": -0.025, #-0.025
     "ki": 0,
-    "kd": -0.0125,
+    "kd": -0.0125, #-0.0125
     "previous_error": 0,
     "integral": 0
 }
