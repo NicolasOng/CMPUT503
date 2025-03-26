@@ -78,8 +78,10 @@ class VehicleDetection(DTROS):
 
         self.camera_sub = rospy.Subscriber(f"/{self.vehicle_name}/camera_node/image/compressed", CompressedImage, self.image_callback)
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
-        self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
         self.circle_img_pub = rospy.Publisher(f"/{self.vehicle_name}/circle_img", Image, queue_size=1)
+
+        self.white_line_pub = rospy.Publisher(f"/{self.vehicle_name}/white_line_right", String, queue_size=1)
+        self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
         self.other_bot_info_pub = rospy.Publisher(f"/{self.vehicle_name}/other_bot_info", String, queue_size=1)
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
 
@@ -87,8 +89,10 @@ class VehicleDetection(DTROS):
         rospy.wait_for_service(f'/{self.vehicle_name}/drive_straight')
         rospy.wait_for_service(f'/{self.vehicle_name}/rotate')
         rospy.wait_for_service(f'/{self.vehicle_name}/drive_arc')
+
         self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
         self.drive_straight_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_straight', SetString)
+        self.drive_arc_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_arc', SetString)
         return
 
     def lane_error_callback(self, msg):
@@ -316,10 +320,15 @@ class VehicleDetection(DTROS):
     ARCHIVED. moved everything to the image_callback
     """
     def loop(self):
+        rospy.loginfo("Starting the loop")
         # add your code here
         rate = rospy.Rate(10)
         self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
         while not rospy.is_shutdown():
+            v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate, reset=False)
+            self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
+
+            rospy.loginfo(f"lane error: {self.lane_error} v: {v} omega: {omega}")
             if self.other_bot_coord is None: continue  # wait for the other bot coord
 
             # find the circle grid
@@ -329,12 +338,20 @@ class VehicleDetection(DTROS):
                 # sleep for 3 seconds
                 break
             #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
-            # otherwise drive straight
-            self.car_cmd.publish(Twist2DStamped(v=0.2, omega=0))
+            # otherwise lane follow
             rate.sleep()
         # sleep for 3 seconds
+        rospy.loginfo("Sleeping for 3 seconds")
         rospy.sleep(3)
         self.overtake()
+        self.white_line_pub.publish(json.dumps({"white_line_right": 0}))  # lane follow left side now
+
+        while not rospy.is_shutdown():
+            v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate, reset=False)
+            self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
+
+        rospy.sleep(1)
+
 
 
     def on_shutdown(self):
@@ -352,23 +369,18 @@ class VehicleDetection(DTROS):
         }
         self.rotate_request(json.dumps(r_params))
 
-        rospy.loginfo("Rotated pi/4")
-        rospy.sleep(1)
+        #rospy.loginfo("Rotated pi/4")
+        #rospy.sleep(1)
 
-        # drive straight
-        s_params = {
-            "speed": 0.5,
-            "meters": 0.3,
-            "leds": False
-        }
-        self.drive_straight_request(json.dumps(s_params))
+        ## drive arc
+        #r_params = {
+        #    "radius": 0.5,
+        #    "speed": 2,
+        #    "angle": math.pi/2,
+        #    "leds": False
+        #}
 
-        rospy.loginfo("Drove straight 0.2m")
-        rospy.sleep(1)
-        r_params["radians"] = -math.pi/4
-
-
-        self.rotate_request(json.dumps(r_params))
+        #self.rotate_request(json.dumps(r_params))
         return
 
     def draw_vertical_line(self, image, x, color):
