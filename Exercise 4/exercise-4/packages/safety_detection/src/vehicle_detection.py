@@ -16,6 +16,7 @@ from Color import Color
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
+from safety_detection.srv import SetString, SetStringResponse
 
 from pid_controller import pid_controller_v_omega, simple_pid
 
@@ -69,6 +70,7 @@ class VehicleDetection(DTROS):
             Color.WHITE: (255, 255, 255),
             Color.YELLOW: (0, 255, 255),
             Color.BLACK: (0, 0, 0),
+            Color.ORANGE: (0, 165, 255),
         }
 
         # flags
@@ -80,6 +82,13 @@ class VehicleDetection(DTROS):
         self.circle_img_pub = rospy.Publisher(f"/{self.vehicle_name}/circle_img", Image, queue_size=1)
         self.other_bot_info_pub = rospy.Publisher(f"/{self.vehicle_name}/other_bot_info", String, queue_size=1)
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
+
+        # move node services
+        rospy.wait_for_service(f'/{self.vehicle_name}/drive_straight')
+        rospy.wait_for_service(f'/{self.vehicle_name}/rotate')
+        rospy.wait_for_service(f'/{self.vehicle_name}/drive_arc')
+        self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
+        self.drive_straight_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_straight', SetString)
         return
 
     def lane_error_callback(self, msg):
@@ -321,7 +330,7 @@ class VehicleDetection(DTROS):
                 pass
             if self.img is not None and self.other_bot_coord is not None:
                 # find the circle grid
-                if self.other_bot_coord is not None and self.other_bot_coord[0] < 7:
+                if self.other_bot_coord is not None and self.other_bot_coord[1] < 200:
                     # stop the bot
                     self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
                     break
@@ -339,17 +348,25 @@ class VehicleDetection(DTROS):
     
     def overtake(self):
         import math
-        self.car_cmd.publish(Twist2DStamped(v=0.4, omega=math.pi/2))
+        # rotate pi/4
+        r_params = {
+            "radians": math.pi/4,
+            "speed": 0.2,
+            "leds": False
+        }
+        self.rotate_request(json.dumps(r_params))
 
-        # sleep for 2 seconds
-        rospy.sleep(1)
+        # drive straight
+        s_params = {
+            "distance": 0.5,
+            "speed": 0.2,
+            "leds": False
+        }
+        self.drive_straight_request(json.dumps(s_params))
 
-        self.car_cmd.publish(Twist2DStamped(v=0.4, omega=-math.pi/2))
 
-        # sleep for 2 seconds
-        rospy.sleep(1)
-
-        self.car_cmd.publish(Twist2DStamped(v=0.4, omega=0))
+        r_params["radians"] = -math.pi/4
+        self.rotate_request(json.dumps(r_params))
         return
 
     def draw_vertical_line(self, image, x, color):
