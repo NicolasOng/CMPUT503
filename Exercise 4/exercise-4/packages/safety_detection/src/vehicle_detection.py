@@ -319,22 +319,18 @@ class VehicleDetection(DTROS):
         # add your code here
         rate = rospy.Rate(10)
         self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
-
         while not rospy.is_shutdown():
-            # check if the vehicle is detected
-            if self.lane_error is not None:
-                v, omega = pid_controller_v_omega(self.lane_error, simple_pid, 10, False)
-                rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
-                # send the calculated omega to the wheel commands
-                self.car_cmd.publish(Twist2DStamped(v=0.2, omega=omega))
-                pass
-            if self.img is not None and self.other_bot_coord is not None:
-                # find the circle grid
-                if self.other_bot_coord is not None and self.other_bot_coord[1] < 200:
-                    # stop the bot
-                    self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
-                    break
-                #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
+            if self.other_bot_coord is None: continue  # wait for the other bot coord
+
+            # find the circle grid
+            if self.other_bot_coord[1] > 0 and self.other_bot_coord[1] < 200:
+                # stop the bot
+                self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
+                # sleep for 3 seconds
+                break
+            #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
+            # otherwise drive straight
+            self.car_cmd.publish(Twist2DStamped(v=0.2, omega=0))
             rate.sleep()
         # sleep for 3 seconds
         rospy.sleep(3)
@@ -351,21 +347,27 @@ class VehicleDetection(DTROS):
         # rotate pi/4
         r_params = {
             "radians": math.pi/4,
-            "speed": 0.2,
+            "speed": 2,
             "leds": False
         }
         self.rotate_request(json.dumps(r_params))
 
+        rospy.loginfo("Rotated pi/4")
+        rospy.sleep(1)
+
         # drive straight
         s_params = {
-            "distance": 0.5,
-            "speed": 0.2,
+            "speed": 0.5,
+            "meters": 0.3,
             "leds": False
         }
         self.drive_straight_request(json.dumps(s_params))
 
-
+        rospy.loginfo("Drove straight 0.2m")
+        rospy.sleep(1)
         r_params["radians"] = -math.pi/4
+
+
         self.rotate_request(json.dumps(r_params))
         return
 
@@ -404,7 +406,7 @@ if __name__ == '__main__':
     rospy.sleep(2)
     node = VehicleDetection(node_name='april_tag_detector')
     #node.loop()
-    #node.overtake()
+    node.overtake()
     rospy.spin()
 
 """
