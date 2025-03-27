@@ -2,7 +2,7 @@
 
 Group members:  Nicolas Ong, Truong Pham, Martin McLaren
 
-This is the folder that contains all the code for exercise 3 of CMPUT503. In this lab exercise, we continue the use of computer vision for feature detection in our robot's environment, including road features like road signs and crosswalks, as well as pedestrians and other Duckiebots. Our robot reacts to each detection appropriately, navigating the course in a safe manner. We apply the same principles of vision and robot control principles that were introduced in past exercises, extending the behavior of our robot in preparation for the final course project. 
+This is the folder that contains all the code for exercise 4 of CMPUT503. In this lab exercise, we continue the use of computer vision for feature detection in our robot's environment, including road features like road signs and crosswalks, as well as pedestrians and other Duckiebots. Our robot reacts to each detection appropriately, navigating the course in a safe manner. We apply the same principles of vision and robot control principles that were introduced in past exercises, extending the behavior of our robot in preparation for the final course project. 
 
 ## Dependencies
 The following dependencies and systems are required to run the software contained in this exercise repository.
