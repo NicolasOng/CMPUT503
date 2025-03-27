@@ -31,7 +31,7 @@ class CameraDetectionNode(DTROS):
 
         # AprilTag Publishers
         self.tag_id_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_id", String, queue_size=1)
-        self_tag_list_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
+        self.tag_list_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
         self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
         self.duckies_pub = rospy.Publisher(f"/{self.vehicle_name}/duckies_info", String, queue_size=1)
 
@@ -402,9 +402,9 @@ class CameraDetectionNode(DTROS):
         # ApriltTag detector
         results = self.at_detector.detect(image_grey)
 
-        tags_list = []
         largest_tag_index = 0
         largest_tag_area = 0
+        id = -1
 
         if len(results) == 0:
             self.tag_image.publish(self.bridge.cv2_to_imgmsg(clean_image, encoding="bgr8"))
