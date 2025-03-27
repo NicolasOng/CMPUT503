@@ -35,7 +35,7 @@ def pid_controller_v_omega(error, pid_values, rate, reset=False):
     omega = None
     if error is not None:
         omega = pid_controller(pid_values, error, dt, reset=reset)
-        clamp_value = math.pi * 5
+        clamp_value = math.pi * 1
         omega = max(-clamp_value, min(omega, clamp_value))
     # return the calculated v and omega
     if error is None:

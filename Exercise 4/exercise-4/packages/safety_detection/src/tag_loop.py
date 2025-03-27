@@ -38,22 +38,22 @@ class TagLoop(DTROS):
             self.rot_dir = -1
 
         # tag detection
-        self.i_stop_sign_tag_id, self.i_t_intersection_tag_id, self.i_ualberta_tag_id = 21, 50, 94
-        self.o_stop_sign_tag_id, self.o_t_intersection_tag_id, self.o_ualberta_tag_id = 22, 15, 93
-        if self.outside:
-            self.stop_sign_tag_id, self.t_intersection_tag_id, self.ualberta_tag_id = self.o_stop_sign_tag_id, self.o_t_intersection_tag_id, self.o_ualberta_tag_id
-        else:
-            self.stop_sign_tag_id, self.t_intersection_tag_id, self.ualberta_tag_id = self.i_stop_sign_tag_id, self.i_t_intersection_tag_id, self.i_ualberta_tag_id
-        self.none_tag_id = -1
-        self.last_detected_tag_id = -1
         #self.tag_list_topic = rospy.Subscriber(f"/{self.vehicle_name}/tag_list", String, self.tag_list_callback)
         self.tag_list_topic = rospy.Subscriber(f"/{self.vehicle_name}/tag_id", String, self.tag_id_callback)
-        self.tag_time_dict = {
-            self.stop_sign_tag_id: 3,
-            self.t_intersection_tag_id: 2,
-            self.ualberta_tag_id: 1,
-            self.none_tag_id: 0.5
-        }
+        self.last_detected_tag_id = -1
+        self.current_led_tag_color = -1
+        stop_sign_tag_ids = [21, 22, 162, 163]
+        intersection_sign_ids = [50, 15, 133, 59, 51, 56]
+        ualberta_tag_ids = [94, 93, 200, 201]
+        self.none_tag_id = -1
+        self.tag_time_dict = {}
+        for tag_id in stop_sign_tag_ids:
+            self.tag_time_dict[tag_id] = 3
+        for tag_id in intersection_sign_ids:
+            self.tag_time_dict[tag_id] = 2
+        for tag_id in ualberta_tag_ids:
+            self.tag_time_dict[tag_id] = 1
+        self.tag_time_dict[self.none_tag_id] = 0.5
 
         # ground color detection
         self.closest_red = float('inf')
@@ -68,22 +68,24 @@ class TagLoop(DTROS):
         white = ColorRGBA(r=255, g=255, b=255, a=255)
         green = ColorRGBA(r=0, g=255, b=0, a=255)
         blue = ColorRGBA(r=0, g=0, b=255, a=255)
-        self.default_list = [white, red, white, red, white]
-        self.all_red_list = [red] * 5
-        self.all_green_list = [green] * 5
-        self.all_blue_list = [blue] * 5
-        self.all_white_list = [white] * 5
-        self.all_red = LEDPattern(rgb_vals=self.all_red_list)
-        self.all_green = LEDPattern(rgb_vals=self.all_green_list)
-        self.all_blue = LEDPattern(rgb_vals=self.all_blue_list)
-        self.all_white = LEDPattern(rgb_vals=self.all_white_list)
-        self.default = LEDPattern(rgb_vals=self.default_list)
-        self.tag_to_led = {
-            self.stop_sign_tag_id: self.all_red,
-            self.t_intersection_tag_id: self.all_blue,
-            self.ualberta_tag_id: self.all_green,
-            self.none_tag_id: self.default
-        }
+        default_list = [white, red, white, red, white]
+        all_red_list = [red] * 5
+        all_green_list = [green] * 5
+        all_blue_list = [blue] * 5
+        all_white_list = [white] * 5
+        self.all_red = LEDPattern(rgb_vals=all_red_list)
+        self.all_green = LEDPattern(rgb_vals=all_green_list)
+        self.all_blue = LEDPattern(rgb_vals=all_blue_list)
+        self.all_white = LEDPattern(rgb_vals=all_white_list)
+        self.default = LEDPattern(rgb_vals=default_list)
+        self.tag_to_led = {}
+        for tag_id in stop_sign_tag_ids:
+            self.tag_to_led[tag_id] = self.all_red
+        for tag_id in intersection_sign_ids:
+            self.tag_to_led[tag_id] = self.all_blue
+        for tag_id in ualberta_tag_ids:
+            self.tag_to_led[tag_id] = self.all_green
+        self.tag_to_led[self.none_tag_id] = self.all_white
 
     def lane_error_callback(self, msg):
         '''
@@ -152,25 +154,14 @@ class TagLoop(DTROS):
         # get the closest white color
         self.closest_white = min(color_coords["white"], key=lambda item: item['center'][1])['center'][1] if color_coords["white"] else float('inf')
     
-    '''
-    def rotate(self, radians, speed, leds=False):
-        params = {
-            "radians": radians,
-            "speed": speed,
-            "leds": leds
-        }
-        params_json = json.dumps(params)
-        self.rotate_request(params_json)
-    '''
-    
     def set_velocities(self, linear, rotational):
         '''
         sets the linear/rotational velocities of the Duckiebot
         linear = m/s
         rotational = radians/s
         '''
-        rospy.loginfo(f'linear: {linear}, omega: {rotational}')
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
+        rospy.loginfo(f'linear: {linear}, omega: {rotational}')
 
     def pause(self, seconds):
         '''
@@ -201,48 +192,48 @@ class TagLoop(DTROS):
             rate.sleep()
         self.set_velocities(0, 0)
 
-    def rotate_test(self, radians, speed):
-        print("WHY AREN'T YOU WORKING")
-        rate = rospy.Rate(1)
-        rate.sleep()
-        for i in range(5):
-            rospy.loginfo(f'rotate cmd sent')
-            self.car_cmd.publish(Twist2DStamped(v=speed, omega=radians))
-        rate.sleep()
-    
+    def update_leds(self):
+        if self.last_detected_tag_id != self.current_led_tag_color:
+            self.led_command.publish(self.tag_to_led[self.last_detected_tag_id])
+            rospy.loginfo(f"Changed LED from {self.current_led_tag_color} to {self.last_detected_tag_id}.")
+            self.current_led_tag_color = self.last_detected_tag_id
+
     def tag_loop(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
+        self.led_command.publish(self.all_white)
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
             # update the leds
-            self.led_command.publish(self.tag_to_led[self.last_detected_tag_id])
+            self.update_leds()
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
-            #rospy.loginfo(f'error: {self.lane_error}, omega: {omega}')
             self.set_velocities(v, omega)
             # if the bot is at a red tape,
             if self.closest_red < 200 and self.red_cooldown == 0 and True:
+                rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
+                # update the red cooldown
+                self.red_cooldown = 5
                 # stop the bot
                 self.pause(0.5)
-                self.red_cooldown = 5
-                rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
-                # and wait for some amount of time, depending on the last seen tag id.
+                # wait for some amount of time, depending on the last seen tag id.
                 rospy.sleep(self.tag_time_dict[self.last_detected_tag_id])
-                # and reset the last detected tag id
+                # reset the last detected tag id
                 self.last_detected_tag_id = self.none_tag_id
                 # reset the start time, so time spent waiting is not counted
                 start_time = rospy.Time.now()
                 rospy.loginfo(f'done red line operations')
             # if the bot is at a white tape,
             if self.closest_white < 200 and self.white_cooldown == 0 and True:
-                # stop the bot
-                self.pause(2)
-                self.white_cooldown = 5
                 rospy.loginfo(f'detected white line, rotating')
-                # and rotate the bot
+                # update the white cooldown
+                self.white_cooldown = 5
+                # stop the bot
+                self.pause(1)
+                # rotate the bot
                 self.rotate(math.pi/2 * 0.5, math.pi * 2)
-                self.pause(2)
+                # stop the bot again
+                self.pause(1)
                 # reset the start time, so time spent waiting is not counted
                 start_time = rospy.Time.now()
                 rospy.loginfo(f'done white line operations')
@@ -250,6 +241,8 @@ class TagLoop(DTROS):
             # update the cooldowns
             end_time = rospy.Time.now()
             dt = (end_time - start_time).to_sec()
+            rospy.loginfo(f"Loop duration: {dt:.6f} seconds")
+            rospy.loginfo(f"---")
             self.red_cooldown = max(0, self.red_cooldown - dt)
             self.white_cooldown = max(0, self.white_cooldown - dt)
 
