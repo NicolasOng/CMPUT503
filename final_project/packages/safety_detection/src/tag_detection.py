@@ -24,10 +24,10 @@ class AprilTagDetectionNode(DTROS):
 
         # Publishers
         self.tag_id = rospy.Publisher(f"/{self.vehicle_name}/tag_ids", int, queue_size=1)
-        #self.tag_center = rospy.Publisher(f"/{self.vehicle_name}/tag_center", String, queue_size=1)
         #self.tag_corners = rospy.Publisher(f"/{self.vehicle_name}/tag_corners", String, queue_size=1)
         self_tag_list = rospy.Publisher(f"/{self.vehicle_name}/tag_list", String, queue_size=1)
         self.tag_image = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+        #self.tag_center = rospy.Publisher(f"/{self.vehicle_name}/tag_center", String, queue_size=1)
 
         # AprilTag detector engine. Expensive to create/destroy, so create a single instance for class, call detect as needed
         self.at_detector = dt_apriltags.Detector()
