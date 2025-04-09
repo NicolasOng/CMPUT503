@@ -27,8 +27,7 @@ class VehicleDetection(DTROS):
 
         # add your code here
         self.vehicle_name = os.environ['VEHICLE_NAME']
-        self.last_stamp = rospy.Time.now()
-        self.callback_freq = 100 # hz
+        self.callback_freq = 2 # hz
         self.publish_duration = rospy.Duration.from_sec(1.0 / self.callback_freq)  # in seconds
 
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +47,8 @@ class VehicleDetection(DTROS):
         self.blob_detector_params = cv2.SimpleBlobDetector_Params()  # https://stackoverflow.com/questions/8076889/how-to-use-opencv-simpleblobdetector
         self.fill_blob_detector_params()
         self.simple_blob_detector = cv2.SimpleBlobDetector_create(self.blob_detector_params)
+
+
         # robot position in the projected ground plane,
         # below the center of the image by some distance (mm)
         self.ground_w, self.ground_h = 1250, 1250
@@ -73,43 +74,21 @@ class VehicleDetection(DTROS):
             Color.BLACK: (0, 0, 0),
             Color.ORANGE: (0, 165, 255),
         }
+        self.last_stamp = rospy.Time.now()
 
         # flags
         self.stop_flag = False
 
+        self.other_bot_info_pub = rospy.Publisher(f"/{self.vehicle_name}/other_bot_info", String, queue_size=1)
         self.camera_sub = rospy.Subscriber(f"/{self.vehicle_name}/camera_node/image/compressed", CompressedImage, self.image_callback)
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
         self.circle_img_pub = rospy.Publisher(f"/{self.vehicle_name}/circle_img", Image, queue_size=1)
 
         self.white_line_pub = rospy.Publisher(f"/{self.vehicle_name}/white_line_right", String, queue_size=1)
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
-        self.other_bot_info_pub = rospy.Publisher(f"/{self.vehicle_name}/other_bot_info", String, queue_size=1)
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
-        self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
 
-        # move node services
-        rospy.wait_for_service(f'/{self.vehicle_name}/drive_straight')
-        rospy.wait_for_service(f'/{self.vehicle_name}/rotate')
-        rospy.wait_for_service(f'/{self.vehicle_name}/drive_arc')
 
-        self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
-        self.drive_straight_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_straight', SetString)
-        self.drive_arc_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_arc', SetString)
-
-        red = ColorRGBA(r=255, g=0, b=0, a=255)
-        white = ColorRGBA(r=255, g=255, b=255, a=0)
-        green = ColorRGBA(r=0, g=255, b=0, a=255)
-        blue = ColorRGBA(r=0, g=0, b=255, a=255)
-        self.default_list = [white, red, white, red, white]
-        self.all_red_list = [red] * 5
-        self.all_green_list = [green] * 5
-        self.all_blue_list = [blue] * 5
-        self.all_white_list = [white] * 5
-        self.all_red = LEDPattern(rgb_vals=self.all_red_list)
-        self.all_green = LEDPattern(rgb_vals=self.all_green_list)
-        self.all_blue = LEDPattern(rgb_vals=self.all_blue_list)
-        self.all_white = LEDPattern(rgb_vals=self.all_white_list)
-        self.default = LEDPattern(rgb_vals=self.default_list)
 
         return
 
@@ -123,21 +102,24 @@ class VehicleDetection(DTROS):
         self.lane_error = json.loads(meas_json)["lane_error"]
 
     def fill_blob_detector_params(self):
-        self.blob_detector_params.filterByArea = True
-        self.blob_detector_params.minArea = 10  # pixels
-        self.blob_detector_params.maxArea = 1000  # pixels
+        self.blob_detector_params.minArea = 10
         self.blob_detector_params.minDistBetweenBlobs = 2
-                # Filter by circularity
-        self.blob_detector_params.filterByCircularity = True
-        self.blob_detector_params.minCircularity = 0.7
 
-        # Filter by convexity
-        self.blob_detector_params.filterByConvexity = True
-        self.blob_detector_params.minConvexity = 0.8
+        #self.blob_detector_params.filterByArea = True
+        #self.blob_detector_params.minArea = 10  # pixels
+        #self.blob_detector_params.maxArea = 1000  # pixels
+        #self.blob_detector_params.minDistBetweenBlobs = 2
+        #        # Filter by circularity
+        #self.blob_detector_params.filterByCircularity = True
+        #self.blob_detector_params.minCircularity = 0.7
 
-        # Filter by inertia
-        self.blob_detector_params.filterByInertia = True
-        self.blob_detector_params.minInertiaRatio = 0.8
+        ## Filter by convexity
+        #self.blob_detector_params.filterByConvexity = True
+        #self.blob_detector_params.minConvexity = 0.8
+
+        ## Filter by inertia
+        #self.blob_detector_params.filterByInertia = True
+        #self.blob_detector_params.minInertiaRatio = 0.8
 
 
     def manuver_around_bot(self, **kwargs):
@@ -370,7 +352,7 @@ class VehicleDetection(DTROS):
         # turn off the LED
         #self.led_command.publish(self.all_red)
         # add your code here
-        self.led_command.publish(self.default)
+        #self.led_command.publish(self.default)
 
         rate = rospy.Rate(10)
         self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
@@ -383,10 +365,18 @@ class VehicleDetection(DTROS):
 
             # error between other_bot_coord and the center of the image
             if self.other_bot_coord[1] > 0:
-                lane_error = self.unprojected_other_bot_coord[0] - (self.cam_w / 2)
-                rospy.loginfo(f"Lane error: {lane_error}")
+
+                lane_error = self.unprojected_other_bot_coord[0] - (self.cam_w / 2)  # negative if bot facing left
                 v, omega = pid_controller_v_omega(lane_error, simple_pid, 10, reset=False)
                 self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
+
+                distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
+                if distance <= 30:
+                    # stop
+                    self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
+                    #break
+                rospy.loginfo(f"Lane error: {lane_error} distance: {distance}")
+
             # otherwise lane follow
             rate.sleep()
         rospy.loginfo("Sleeping for 3 seconds")
