@@ -110,16 +110,16 @@ class VehicleDetection(DTROS):
         #self.blob_detector_params.maxArea = 1000  # pixels
         #self.blob_detector_params.minDistBetweenBlobs = 2
         #        # Filter by circularity
-        #self.blob_detector_params.filterByCircularity = True
-        #self.blob_detector_params.minCircularity = 0.7
+        self.blob_detector_params.filterByCircularity = True
+        self.blob_detector_params.minCircularity = 0.7
 
-        ## Filter by convexity
-        #self.blob_detector_params.filterByConvexity = True
-        #self.blob_detector_params.minConvexity = 0.8
+        # Filter by convexity
+        self.blob_detector_params.filterByConvexity = True
+        self.blob_detector_params.minConvexity = 0.8
 
-        ## Filter by inertia
-        #self.blob_detector_params.filterByInertia = True
-        #self.blob_detector_params.minInertiaRatio = 0.8
+        # Filter by inertia
+        self.blob_detector_params.filterByInertia = True
+        self.blob_detector_params.minInertiaRatio = 0.8
 
 
     def manuver_around_bot(self, **kwargs):
@@ -178,7 +178,7 @@ class VehicleDetection(DTROS):
         # draw verticle line at cam_w / 2 - 100
         self.draw_vertical_line(self.img, self.cam_w / 2, Color.RED)
 
-        #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
+        self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
         # msg 
         other_bot_msg = {
             "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
@@ -344,7 +344,10 @@ class VehicleDetection(DTROS):
         cv2.putText(img, text, position, font, font_scale, font_color, font_thickness)
 
     """
-    ARCHIVED. moved everything to the image_callback
+    Twisted2DStamped
+    v: linear velocity
+    omega: angular velocity, positive omega is counter-clockwise
+                                negative omega is clockwise
     """
     def loop(self):
         rospy.loginfo("Starting the loop")
@@ -370,17 +373,16 @@ class VehicleDetection(DTROS):
                 self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
 
                 distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
-                if distance <= 40:
+                if distance <= 55:
                     # stop
                     self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
                     #break
                 #rospy.loginfo(f"Lane error={self.unprojected_other_bot_coord[0]} - {self.cam_w / 2} = {lane_error}, distance: {distance}")
                 rospy.loginfo(f"Lane error={lane_error}, distance: {distance} omega: {omega}")
 
-                self.put_text(self.img, f"Lane error={lane_error}", (10, 50))
+                #   self.put_text(self.img, f"Lane error={lane_error}", (10, 50))
 
-                cv2.circle(self.img, tuple(map(int, self.unprojected_other_bot_coord)), 5, (0, 0, 255), -1)
-                self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
+                #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
 
             # otherwise lane follow
             rate.sleep()

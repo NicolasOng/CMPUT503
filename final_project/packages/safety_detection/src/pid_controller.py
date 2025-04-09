@@ -10,9 +10,9 @@ simple_pid = {
 }
 
 bot_pid = {
-    "kp": 0.02, 
+    "kp": 0.01, 
     "ki": 0,
-    "kd": -0.0125, #-0.0125
+    "kd": 0.0125, #-0.0125
     "previous_error": 0,
     "integral": 0
 }
