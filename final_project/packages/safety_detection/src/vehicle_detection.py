@@ -18,7 +18,7 @@ from cv_bridge import CvBridge
 import numpy as np
 from safety_detection.srv import SetString, SetStringResponse
 
-from pid_controller import pid_controller_v_omega, simple_pid
+from pid_controller import pid_controller_v_omega, simple_pid, bot_pid
 
 class VehicleDetection(DTROS):
 
@@ -178,7 +178,7 @@ class VehicleDetection(DTROS):
         # draw verticle line at cam_w / 2 - 100
         self.draw_vertical_line(self.img, self.cam_w / 2, Color.RED)
 
-        self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(undistorted_image, encoding="bgr8"))
+        #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
         # msg 
         other_bot_msg = {
             "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
@@ -245,7 +245,6 @@ class VehicleDetection(DTROS):
         # get circle grid dim 
         (grid_width, grid_height) = self.approximate_duckiebot_circlegrid_dim(circle_points)
 
-        self.put_text(self.img, f"Grid width: {grid_width}, Grid height: {grid_height}", (10, 30))
 
         if len(circle_points) == 21:
             # distance of the centers
@@ -366,36 +365,42 @@ class VehicleDetection(DTROS):
             # error between other_bot_coord and the center of the image
             if self.other_bot_coord[1] > 0:
 
-                lane_error = self.unprojected_other_bot_coord[0] - (self.cam_w / 2)  # negative if bot facing left
-                v, omega = pid_controller_v_omega(lane_error, simple_pid, 10, reset=False)
+                lane_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0] # negative if bot facing left
+                v, omega = pid_controller_v_omega(lane_error, bot_pid, 10, reset=False)
                 self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
 
                 distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
-                if distance <= 30:
+                if distance <= 40:
                     # stop
                     self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
                     #break
-                rospy.loginfo(f"Lane error: {lane_error} distance: {distance}")
+                #rospy.loginfo(f"Lane error={self.unprojected_other_bot_coord[0]} - {self.cam_w / 2} = {lane_error}, distance: {distance}")
+                rospy.loginfo(f"Lane error={lane_error}, distance: {distance} omega: {omega}")
+
+                self.put_text(self.img, f"Lane error={lane_error}", (10, 50))
+
+                cv2.circle(self.img, tuple(map(int, self.unprojected_other_bot_coord)), 5, (0, 0, 255), -1)
+                self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
 
             # otherwise lane follow
             rate.sleep()
         rospy.loginfo("Sleeping for 3 seconds")
 
-        # change LED color
-        
-        #self.led_command.publish(self.all_blue)
 
         rospy.sleep(3)
-        #self.overtake()
-
-        #self.led_command.publish(self.all_green)
-        #self.white_line_pub.publish(json.dumps({"white_line_right": 0}))  # lane follow left side now
-
-        #while not rospy.is_shutdown():
-        #    v, omega = pid_controller_v_omega(self.lane_error, simple_pid, 10, reset=False)
-        #    self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
         rospy.sleep(1)
 
+    def dum_loop(self):
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            #v, omega = pid_controller_v_omega(self.lane_error, simple_pid, 10, reset=False)
+            #self.car_cmd.publish(Twist2DStamped(v=0.2, omega=omega))
+
+            #rospy.loginfo(f"lane error: {self.lane_error} v: {v} omega: {omega}")
+            self.car_cmd.publish(Twist2DStamped(v=0.2, omega=-3))
+            rate.sleep()
+
+        return
 
     def on_shutdown(self):
         # on shutdown,
@@ -461,6 +466,7 @@ if __name__ == '__main__':
     rospy.sleep(2)
     node = VehicleDetection(node_name='april_tag_detector')
     node.loop()
+    #node.dum_loop()
     #node.overtake()
     rospy.spin()
 

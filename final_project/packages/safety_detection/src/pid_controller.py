@@ -9,6 +9,14 @@ simple_pid = {
     "integral": 0
 }
 
+bot_pid = {
+    "kp": 0.02, 
+    "ki": 0,
+    "kd": -0.0125, #-0.0125
+    "previous_error": 0,
+    "integral": 0
+}
+
 def pid_controller(pid, error, dt, reset=False):
     '''
     The method to get PID controls.
