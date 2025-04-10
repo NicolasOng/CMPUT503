@@ -359,48 +359,6 @@ class VehicleDetection(DTROS):
     omega: angular velocity, positive omega is counter-clockwise
                                 negative omega is clockwise
     """
-    def loop(self):
-        rospy.loginfo("Starting the loop")
-        # turn off the LED
-        #self.led_command.publish(self.all_red)
-        # add your code here
-        #self.led_command.publish(self.default)
-
-        rate = rospy.Rate(10)
-        self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
-        while not rospy.is_shutdown():
-            #v, omega = pid_controller_v_omega(self.lane_error, simple_pid, 10, reset=False)
-            #self.car_cmd.publish(Twist2DStamped(v=0.2, omega=omega))
-
-            #rospy.loginfo(f"lane error: {self.lane_error} v: {v} omega: {omega}")
-            if self.other_bot_coord is None: continue  # wait for the other bot coord
-
-            # error between other_bot_coord and the center of the image
-            if self.other_bot_coord[1] > 0:
-
-                lane_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0] # negative if bot facing left
-                v, omega = pid_controller_v_omega(lane_error, bot_pid, 10, reset=False)
-                self.car_cmd.publish(Twist2DStamped(v=v, omega=omega))
-
-                distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
-                if distance <= 55:
-                    # stop
-                    self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
-                    #break
-                #rospy.loginfo(f"Lane error={self.unprojected_other_bot_coord[0]} - {self.cam_w / 2} = {lane_error}, distance: {distance}")
-                rospy.loginfo(f"Lane error={lane_error}, distance: {distance} omega: {omega}")
-
-                #   self.put_text(self.img, f"Lane error={lane_error}", (10, 50))
-
-                #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
-
-            # otherwise lane follow
-            rate.sleep()
-        rospy.loginfo("Sleeping for 3 seconds")
-
-
-        rospy.sleep(3)
-        rospy.sleep(1)
 
     def on_shutdown(self):
         # on shutdown,
@@ -430,9 +388,6 @@ if __name__ == '__main__':
     # create the node
     rospy.sleep(2)
     node = VehicleDetection(node_name='april_tag_detector')
-    #node.loop()
-    #node.dum_loop()
-    #node.overtake()
     rospy.spin()
 
 """
