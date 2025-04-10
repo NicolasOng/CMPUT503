@@ -190,12 +190,12 @@ class VehicleDetection(DTROS):
             "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
             "pixel_distance": ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100,
             "bot_error": bot_error, # negative if bot facing left
-            "turning_left": np.mean(self.bot_error_deque) > 0,  
+            "turning_left": bool(np.mean(self.bot_error_deque) > 0),  
         }
         #rospy.loginfo(f"Other bot coord: {other_bot_coord}")
-        rospy.loginfo(f"mean errror: {other_bot_msg['turning_left']}")
-        json_le = json.dumps(str(other_bot_msg))
-        self.other_bot_info_pub.publish(json_le)
+        msg = String()
+        msg.data = json.dumps(other_bot_msg)
+        self.other_bot_info_pub.publish(msg)
         self.other_bot_coord = other_bot_coord
 
 
