@@ -65,6 +65,7 @@ class VehicleDetection(DTROS):
         self.lane_error = None
 
         self.bot_error_deque = deque(maxlen=5)
+        self.bot_pixel_distance_deque = deque(maxlen=1)
 
 
 
@@ -164,7 +165,12 @@ class VehicleDetection(DTROS):
         #undistorted_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)
         blob_points = self.detect_bot(undistorted_image)  # [(x, y), ...]
 
-        if blob_points is None: return
+        if blob_points is None:
+            self.bot_error_deque.append(0)  # if no bot detected for a while, this deque will be filled with 0s
+            # if no bot detected for a while, this deque will be filled with some large number 
+            # so any loop that stops based on pixel_distance can still run when theres no bot
+            self.bot_pixel_distance_deque.append(1000)  # size 1 deque
+            return
         # draw the points on the image
 
 
@@ -184,11 +190,13 @@ class VehicleDetection(DTROS):
 
         self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
         # msg 
-        bot_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0], # negative if bot facing left
+        bot_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0] # negative if bot facing left
+        pixel_distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
+        self.bot_pixel_distance_deque.append(pixel_distance)
         self.bot_error_deque.append(bot_error)
         other_bot_msg = {
             "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
-            "pixel_distance": ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100,
+            "pixel_distance": self.bot_pixel_distance_deque[0], # the only element of the deque
             "bot_error": bot_error, # negative if bot facing left
             "turning_left": bool(np.mean(self.bot_error_deque) > 0),  
         }
