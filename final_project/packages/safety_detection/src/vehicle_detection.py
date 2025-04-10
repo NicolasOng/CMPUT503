@@ -19,6 +19,8 @@ import numpy as np
 from safety_detection.srv import SetString, SetStringResponse
 
 from pid_controller import pid_controller_v_omega, simple_pid, bot_pid
+from collections import deque
+import numpy as np
 
 class VehicleDetection(DTROS):
 
@@ -61,6 +63,8 @@ class VehicleDetection(DTROS):
         self.other_bot_coord = None
         self.unprojected_other_bot_coord = None
         self.lane_error = None
+
+        self.bot_error_deque = deque(maxlen=5)
 
 
 
@@ -180,10 +184,16 @@ class VehicleDetection(DTROS):
 
         self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
         # msg 
+        bot_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0], # negative if bot facing left
+        self.bot_error_deque.append(bot_error)
         other_bot_msg = {
             "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
+            "pixel_distance": ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100,
+            "bot_error": bot_error, # negative if bot facing left
+            "turning_left": np.mean(self.bot_error_deque) > 0,  
         }
-        rospy.loginfo(f"Other bot coord: {other_bot_coord}")
+        #rospy.loginfo(f"Other bot coord: {other_bot_coord}")
+        rospy.loginfo(f"mean errror: {other_bot_msg['turning_left']}")
         json_le = json.dumps(str(other_bot_msg))
         self.other_bot_info_pub.publish(json_le)
         self.other_bot_coord = other_bot_coord
@@ -392,47 +402,11 @@ class VehicleDetection(DTROS):
         rospy.sleep(3)
         rospy.sleep(1)
 
-    def dum_loop(self):
-        rate = rospy.Rate(10)
-        while not rospy.is_shutdown():
-            #v, omega = pid_controller_v_omega(self.lane_error, simple_pid, 10, reset=False)
-            #self.car_cmd.publish(Twist2DStamped(v=0.2, omega=omega))
-
-            #rospy.loginfo(f"lane error: {self.lane_error} v: {v} omega: {omega}")
-            self.car_cmd.publish(Twist2DStamped(v=0.2, omega=-3))
-            rate.sleep()
-
-        return
-
     def on_shutdown(self):
         # on shutdown,
         self.car_cmd.publish(Twist2DStamped(v=0, omega=0))
         pass
     
-    def overtake(self):
-        import math
-        # rotate pi/4
-        r_params = {
-            "radians": math.pi/4,
-            "speed": 4,
-            "leds": False
-        }
-        self.rotate_request(json.dumps(r_params))
-
-        #rospy.loginfo("Rotated pi/4")
-        #rospy.sleep(1)
-
-        ## drive arc
-        #r_params = {
-        #    "radius": 0.5,
-        #    "speed": 2,
-        #    "angle": math.pi/2,
-        #    "leds": False
-        #}
-
-        #self.rotate_request(json.dumps(r_params))
-        return
-
     def draw_vertical_line(self, image, x, color):
         '''
         draws a vertical line at the given x-coordinate
@@ -451,23 +425,12 @@ class VehicleDetection(DTROS):
         new_point = (new_point[0] - self.robot_x, -(new_point[1] - self.robot_y))
         return new_point
     
-    # from extrinsic
-    def project_points2(self, point):
-        x, y = point
-
-        point = np.array([x, y, 1])
-
-        ground_point = np.dot(self.homography, point)
-        ground_point /= ground_point[2]  # normalize by z
-        
-        return ground_point[:2]
-    
 
 if __name__ == '__main__':
     # create the node
     rospy.sleep(2)
     node = VehicleDetection(node_name='april_tag_detector')
-    node.loop()
+    #node.loop()
     #node.dum_loop()
     #node.overtake()
     rospy.spin()
