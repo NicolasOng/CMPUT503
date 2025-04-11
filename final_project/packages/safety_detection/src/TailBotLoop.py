@@ -40,6 +40,12 @@ class TailBot(DTROS):
         self.other_bot_info = None
         self.other_bot_topic = rospy.Subscriber(f"/{self.vehicle_name}/other_bot_info", String, self.other_bot_callback)
 
+
+        # service
+        self.drive_turn_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_turn', SetString)
+
+        
+
     def lane_error_callback(self, msg):
         '''
         lane_error = {
@@ -117,6 +123,27 @@ class TailBot(DTROS):
             end_time = rospy.Time.now()
             dt = (end_time - start_time).to_sec()
             self.blue_cooldown = max(0, self.blue_cooldown - dt)
+    def drive_turn_right(self):
+        rospy.loginfo("Turning")
+        import math
+        turn_param = {
+            "angle": math.pi / 1.9,  # actual angle to turn
+            "theta": -3.5,  # for twisted2D
+            "speed": 0.5,
+            "leds": False
+        }
+        self.drive_turn_request(json.dumps(turn_param))
+
+    def drive_turn_left(self):
+        rospy.loginfo("Turning")
+        import math
+        turn_param = {
+            "angle": math.pi / 1.9,  # actual angle to turn
+            "theta": 0.5,  # for twisted2D
+            "speed": 0.3,
+            "leds": False
+        }
+        self.drive_turn_request(json.dumps(turn_param))
 
     def on_shutdown(self):
         # on shutdown,
@@ -128,5 +155,6 @@ class TailBot(DTROS):
 if __name__ == '__main__':
     node = TailBot(node_name='tail')
     rospy.sleep(2)
-    node.Tail()
+    #node.Tail()
+    node.drive_turn_left()
     rospy.spin()
