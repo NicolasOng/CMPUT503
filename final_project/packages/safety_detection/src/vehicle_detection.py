@@ -64,7 +64,10 @@ class VehicleDetection(DTROS):
         self.unprojected_other_bot_coord = None
         self.lane_error = None
 
-        self.bot_error_deque = deque(maxlen=5)
+        self.bot_error_deque = deque(maxlen=3)
+        # fill with 0s
+        for i in range(self.bot_error_deque.maxlen):
+            self.bot_error_deque.append(0)
         self.bot_pixel_distance_deque = deque(maxlen=1)
 
 
@@ -166,7 +169,7 @@ class VehicleDetection(DTROS):
         blob_points = self.detect_bot(undistorted_image)  # [(x, y), ...]
 
         if blob_points is None:
-            self.bot_error_deque.append(0)  # if no bot detected for a while, this deque will be filled with 0s
+            #self.bot_error_deque.append(0)  # if no bot detected for a while, this deque will be filled with 0s
             # if no bot detected for a while, this deque will be filled with some large number 
             # so any loop that stops based on pixel_distance can still run when theres no bot
             self.bot_pixel_distance_deque.append(1000)  # size 1 deque
@@ -194,11 +197,13 @@ class VehicleDetection(DTROS):
         pixel_distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
         self.bot_pixel_distance_deque.append(pixel_distance)
         self.bot_error_deque.append(bot_error)
+
+
         other_bot_msg = {
             "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
             "pixel_distance": self.bot_pixel_distance_deque[0], # the only element of the deque
             "bot_error": bot_error, # negative if bot facing left
-            "turning_left": bool(np.mean(self.bot_error_deque) > 0),  
+            "turning_left": self.compute_other_bot_turning_left(), # True if turning left, False if turning right, None if not turning
         }
         #rospy.loginfo(f"Other bot coord: {other_bot_coord}")
         msg = String()
@@ -213,6 +218,28 @@ class VehicleDetection(DTROS):
         return
 
 
+    """
+    
+    Args:
+
+    Returns:
+        True: if the bot is turning left
+        False: if the bot is turning right
+        None: if the bot is not turning
+    """
+    def compute_other_bot_turning_left(self, error_threshold=100):
+        error_mean = np.mean(self.bot_error_deque)
+
+        if error_mean > 0 and abs(error_mean) > error_threshold:
+            # bot is turning left
+            turning_left = True
+        elif error_mean < 0 and abs(error_mean) > error_threshold:
+            # bot is turning right
+            turning_left = False
+        else:
+            # bot is not turning
+            turning_left = None
+        return turning_left
 
 
     """
