@@ -120,10 +120,10 @@ class CameraDetectionNode(DTROS):
         }
         
         # Draw Toggles
-        self.draw_lane_detection = True
-        self.draw_bounding_boxes = True
-        self.draw_atag_toggle = True
-        self.draw_duckies = True
+        self.draw_lane_detection = False
+        self.draw_bounding_boxes = False
+        self.draw_atag_toggle = False
+        self.draw_duckies = False
 
         # if the bot puts the white line on the right or left
         self.white_on_right = True
@@ -399,6 +399,7 @@ class CameraDetectionNode(DTROS):
         cv2.putText(image, id, (center[0], center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 2)
 
     def perform_tag_detection(self, clean_image, draw_image):
+        tags_list = []
         if self.camera_image is None: 
             return clean_image
 
@@ -474,7 +475,7 @@ class CameraDetectionNode(DTROS):
             min_y = y[min_y_index]
             min_x = x[min_y_index]
             min_point = (min_x, min_y)
-            rospy.loginfo(f"detect duckie at {min_point}")
+            #rospy.loginfo(f"detect duckie at {min_point}")
 
             min_point = self.project_point_to_ground(min_point)
 
