@@ -68,6 +68,9 @@ class TailBot(DTROS):
             self.tag_time_dict[tag_id] = 1
         self.tag_time_dict[self.none_tag_id] = 0.5
 
+        # white line management
+        self.white_line_on_right = True
+
     def lane_error_callback(self, msg):
         '''
         lane_error = {
@@ -144,11 +147,13 @@ class TailBot(DTROS):
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
             self.set_velocities(v, omega)
-            #if self.lane_error is None: self.rotate(0, 0)
+
+            if self.lane_error is None: self.drive_turn_right(math.pi / 4, -3.5, 0.2)
 
             # stop if the bot is too close to the other bot
             if self.other_bot_info is not None and self.other_bot_info["pixel_distance"] <= 55:
                 self.set_velocities(0, 0)
+            
                 
             if self.other_bot_info is not None:
                 rospy.loginfo(f"turn left?: {self.other_bot_info['turning_left']} bot error {self.other_bot_info['bot_error']} \
@@ -173,13 +178,16 @@ class TailBot(DTROS):
         '''
         print("hard code turning")
         if self.other_bot_info is not None:
-            if self.other_bot_info["turning_left"] == True:
-                self.drive_turn_left()
+            if self.other_bot_info["turning_left"]:  
+                self.drive_turn_left()  # hardcoded left turn
             elif self.other_bot_info["turning_left"] == False:
-                self.drive_turn_right()
-            elif self.other_bot_info["turning_left"] == None:
-                return
+                self.drive_turn_right(math.pi / 2, -3.5, 0.2)  # hardcoded right turn
+                return  # let bot adjust itself  using PID
+            elif self.other_bot_info["turning_left"] == None:  # case: other bot isnt turning
+                return  # lane follow
+            
         else:
+            self.drive_turn_right(math.pi / 8, -1, 0.2)
             return
     
     """
@@ -209,13 +217,13 @@ class TailBot(DTROS):
         rospy.loginfo(f'done red line operations')
         return
 
-    def drive_turn_right(self):
+    def drive_turn_right(self, angle=math.pi/2, theta=-3.5, speed=0.2):
         rospy.loginfo("Turning right")
         import math
         turn_param = {
-            "angle": math.pi / 2,  # actual angle to turn
-            "theta": -3.5,  # for twisted2D
-            "speed": 0.2,
+            "angle": angle,  # actual angle to turn
+            "theta": theta,  # for twisted2D
+            "speed": speed,
             "leds": False
         }
         self.drive_turn_request(json.dumps(turn_param))
