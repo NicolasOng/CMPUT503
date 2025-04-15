@@ -30,6 +30,8 @@ class TailBot(DTROS):
         # ground color detection
         self.closest_blue = float('inf')
         self.blue_cooldown = 0
+        self.red_cooldown = 0
+        self.white_cooldown = 0
         self.color_coords_topic = rospy.Subscriber(f"/{self.vehicle_name}/color_coords", String, self.color_coords_callback)
 
         # pedestrian detection
@@ -43,8 +45,28 @@ class TailBot(DTROS):
 
         # service
         self.drive_turn_request = rospy.ServiceProxy(f'/{self.vehicle_name}/drive_turn', SetString)
+        self.rotate_request = rospy.ServiceProxy(f'/{self.vehicle_name}/rotate', SetString)
 
         
+        self.closest_red = float('inf')
+        self.closest_white = float('inf')
+
+        # tags
+        self.tag_list_topic = rospy.Subscriber(f"/{self.vehicle_name}/tag_id", String, self.tag_id_callback)
+        self.last_detected_tag_id = -1
+        self.current_led_tag_color = -1
+        stop_sign_tag_ids = [21, 22, 162, 163]
+        intersection_sign_ids = [50, 15, 133, 59, 51, 56]
+        ualberta_tag_ids = [94, 93, 200, 201]
+        self.none_tag_id = -1
+        self.tag_time_dict = {}
+        for tag_id in stop_sign_tag_ids:
+            self.tag_time_dict[tag_id] = 3
+        for tag_id in intersection_sign_ids:
+            self.tag_time_dict[tag_id] = 2
+        for tag_id in ualberta_tag_ids:
+            self.tag_time_dict[tag_id] = 1
+        self.tag_time_dict[self.none_tag_id] = 0.5
 
     def lane_error_callback(self, msg):
         '''
@@ -73,6 +95,8 @@ class TailBot(DTROS):
         color_coords = json.loads(msg.data)
         # get the closest blue color
         self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1])['center'][1] if color_coords["blue"] else float('inf')
+        self.closest_red = min(color_coords["red"], key=lambda item: item['center'][1])['center'][1] if color_coords["red"] else float('inf')
+        self.closest_white = min(color_coords["white"], key=lambda item: item['center'][1])['center'][1] if color_coords["white"] else float('inf')
     
     def pedestrians_callback(self, msg):
         '''
@@ -95,6 +119,14 @@ class TailBot(DTROS):
         '''
         other_bot_json = msg.data
         self.other_bot_info = json.loads(other_bot_json)
+
+    def tag_id_callback(self, msg):
+        '''
+        msg.data = "id"
+        '''
+        current_tag = int(msg.data)
+        if current_tag != -1:
+            self.last_detected_tag_id = current_tag
     
     def set_velocities(self, linear, rotational):
         '''
@@ -112,30 +144,84 @@ class TailBot(DTROS):
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
             self.set_velocities(v, omega)
+            #if self.lane_error is None: self.rotate(0, 0)
 
             # stop if the bot is too close to the other bot
             if self.other_bot_info is not None and self.other_bot_info["pixel_distance"] <= 55:
                 self.set_velocities(0, 0)
                 
+            if self.other_bot_info is not None:
+                rospy.loginfo(f"turn left?: {self.other_bot_info['turning_left']} bot error {self.other_bot_info['bot_error']} \
+                              pixel distance: {self.other_bot_info['pixel_distance']} omega: {omega} v: {v}; lane error: {self.lane_error}")
+                pass
+            
+            if self.closest_red < 200 and self.red_cooldown == 0 and True:
+                self.on_red_line()
+                self.hard_code_turning()
 
             rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()
             dt = (end_time - start_time).to_sec()
             self.blue_cooldown = max(0, self.blue_cooldown - dt)
+            self.red_cooldown = max(0, self.red_cooldown - dt)
+            self.white_cooldown = max(0, self.white_cooldown - dt)
+    
+    def hard_code_turning(self):
+        '''
+        hard code the turning
+        '''
+        print("hard code turning")
+        if self.other_bot_info is not None:
+            if self.other_bot_info["turning_left"] == True:
+                self.drive_turn_left()
+            elif self.other_bot_info["turning_left"] == False:
+                self.drive_turn_right()
+            elif self.other_bot_info["turning_left"] == None:
+                return
+        else:
+            return
+    
+    """
+    rotate itself
+    
+    """
+    def on_white_line(self):
+
+        return
+    
+    """
+    When self.closest_red < 200, stop the bot and wait for some time
+    """
+    def on_red_line(self):
+        rospy.loginfo(f'detected red line, stopping. tag id: {self.last_detected_tag_id}, time to stop: {self.tag_time_dict[self.last_detected_tag_id]}')
+        # update the red cooldown
+        self.red_cooldown = 5
+        # stop the bot
+        self.pause(0.5)
+        # wait for some amount of time, depending on the last seen tag id.
+        rospy.sleep(self.tag_time_dict[self.last_detected_tag_id])
+
+        # reset the last detected tag id
+        self.last_detected_tag_id = self.none_tag_id
+        # reset the start time, so time spent waiting is not counted
+        start_time = rospy.Time.now()
+        rospy.loginfo(f'done red line operations')
+        return
+
     def drive_turn_right(self):
-        rospy.loginfo("Turning")
+        rospy.loginfo("Turning right")
         import math
         turn_param = {
-            "angle": math.pi / 1.9,  # actual angle to turn
+            "angle": math.pi / 2,  # actual angle to turn
             "theta": -3.5,  # for twisted2D
-            "speed": 0.5,
+            "speed": 0.2,
             "leds": False
         }
         self.drive_turn_request(json.dumps(turn_param))
 
     def drive_turn_left(self):
-        rospy.loginfo("Turning")
+        rospy.loginfo("Turning left")
         import math
         turn_param = {
             "angle": math.pi / 1.9,  # actual angle to turn
@@ -144,6 +230,33 @@ class TailBot(DTROS):
             "leds": False
         }
         self.drive_turn_request(json.dumps(turn_param))
+
+
+    def rotate(self, angle, speed):
+        '''
+        angle is in radians
+        speed is in rad/s
+        '''
+        rotate_param = {
+            "radians": angle,
+            "speed": speed,
+            "leds": False
+        }
+        self.rotate_request(json.dumps(rotate_param))
+
+    
+    def pause(self, seconds):
+        '''
+        seconds should be positive
+        '''
+        rate = rospy.Rate(10)
+        start_time = rospy.Time.now()
+        while not rospy.is_shutdown():
+            self.set_velocities(0, 0)
+            cur_time = rospy.Time.now()
+            if (cur_time - start_time).to_sec() >= seconds:
+                break
+            rate.sleep()
 
     def on_shutdown(self):
         # on shutdown,
@@ -155,6 +268,7 @@ class TailBot(DTROS):
 if __name__ == '__main__':
     node = TailBot(node_name='tail')
     rospy.sleep(2)
-    #node.Tail()
-    node.drive_turn_left()
+    node.Tail()
+    #node.drive_turn_left()
+    #node.drive_turn_right()
     rospy.spin()
