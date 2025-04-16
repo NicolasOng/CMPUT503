@@ -142,13 +142,19 @@ class TailBot(DTROS):
     def Tail(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
+        lane_error_valid_before = False  
         while not rospy.is_shutdown():
+            if self.lane_error is not None: 
+                lane_error_valid_before = True
             start_time = rospy.Time.now()
             # do the lane following
             v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
             self.set_velocities(v, omega)
 
-            if self.lane_error is None: self.drive_turn_right(math.pi / 4, -3.5, 0.2)
+            # lane_error_valid_before is a 
+            # hack for so that bot will not immediately turn right during initialization of the node. since lane_error is None at init
+            if self.lane_error is None and lane_error_valid_before: 
+                self.drive_turn_right(math.pi / 8, -3.5, 0.2)
 
             # stop if the bot is too close to the other bot
             if self.other_bot_info is not None and self.other_bot_info["pixel_distance"] <= 55:
@@ -160,7 +166,7 @@ class TailBot(DTROS):
                               pixel distance: {self.other_bot_info['pixel_distance']} omega: {omega} v: {v}; lane error: {self.lane_error}")
                 pass
             
-            if self.closest_red < 200 and self.red_cooldown == 0 and True:
+            if self.closest_red < 150 and self.red_cooldown == 0 and True:
                 self.on_red_line()
                 self.hard_code_turning()
 
@@ -171,7 +177,7 @@ class TailBot(DTROS):
             self.blue_cooldown = max(0, self.blue_cooldown - dt)
             self.red_cooldown = max(0, self.red_cooldown - dt)
             self.white_cooldown = max(0, self.white_cooldown - dt)
-    
+
     def hard_code_turning(self):
         '''
         hard code the turning
@@ -269,14 +275,13 @@ class TailBot(DTROS):
     def on_shutdown(self):
         # on shutdown,
         self.set_velocities(0, 0)
-        self.set_velocities(0, 0)
-        self.set_velocities(0, 0)
-        self.set_velocities(0, 0)
 
 if __name__ == '__main__':
     node = TailBot(node_name='tail')
     rospy.sleep(2)
+    #node.drive_turn_right(math.pi / 2, -3.5, 0.2)
     node.Tail()
     #node.drive_turn_left()
     #node.drive_turn_right()
+    node.on_shutdown()
     rospy.spin()
