@@ -120,8 +120,8 @@ class CameraDetectionNode(DTROS):
         }
         
         # Draw Toggles
-        self.draw_lane_detection = False
-        self.draw_bounding_boxes = False
+        self.draw_lane_detection = True
+        self.draw_bounding_boxes = True
         self.draw_atag_toggle = False
         self.draw_duckies = False
 
@@ -362,16 +362,35 @@ class CameraDetectionNode(DTROS):
         if white_bb is not None:
             white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
         # get its distance from the left side of the image, plus some offset
-        error = None
+        white_error = None
         if white_center is not None:
             if self.white_on_right:
                 # negative error - bot should turn left.
-                error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
+                white_error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
             else:
-                error = white_center[0] - (0 + self.simple_offset)
-        # publish this as an error in the lane errors topic
+                white_error = white_center[0] - (0 + self.simple_offset)
+
+        # ----------- YELLOW lINE DETECTION (assume yellow is always on the left) -----------
+        image_yellow_crop = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
+        image_yellow_crop = image_yellow_crop[:, int(0):int(self.cam_w / 2)]  # bottom left of the image
+        yellow_bb = self.get_largest_bounding_box(Color.YELLOW, image_yellow_crop)
+        yellow_center = None
+        if yellow_bb is not None:
+            yellow_center = (yellow_bb[0] + yellow_bb[2] / 2, yellow_bb[1] + yellow_bb[3] / 2)
+
+        yellow_error = None
+        if yellow_center is not None:
+            yellow_error = yellow_center[0] - (0 + self.simple_offset)
+        # ---------------------------------------------------------
+        final_error = white_error
+        if yellow_error is not None:
+            if white_error is None:
+                final_error = yellow_error
+            else:
+                final_error = (white_error + yellow_error) / 2
+
         lane_errors = {
-            "lane_error": error
+            "lane_error": final_error
         }
         #rospy.loginfo(f"Lane error: {error}")
         json_le = json.dumps(lane_errors)
@@ -390,7 +409,17 @@ class CameraDetectionNode(DTROS):
                 draw_white_center[0] += int(x_offset)
                 draw_white_center[1] += int(self.cam_h * 0.7)
                 self.draw_bounding_box(draw_image, draw_white_bb, draw_white_center, white_center, Color.BLUE)
-            self.draw_lane_error_value(draw_image, error)
+            if yellow_bb is not None:
+                x_offset = 0 
+                draw_yellow_bb = list(yellow_bb)
+                draw_yellow_bb[0] += int(x_offset)
+                draw_yellow_bb[1] += int(self.cam_h * 0.7)
+                draw_yellow_center = list(yellow_center)
+                draw_yellow_center[0] += int(x_offset)
+                draw_yellow_center[1] += int(self.cam_h * 0.7)
+                self.draw_bounding_box(draw_image, draw_yellow_bb, draw_yellow_center, yellow_center, Color.YELLOW)
+
+            self.draw_lane_error_value(draw_image, final_error)
         return draw_image
     
     # Draws a bounding box and ID on an ApriltTag 

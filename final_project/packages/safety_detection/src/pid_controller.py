@@ -9,6 +9,15 @@ simple_pid = {
     "integral": 0
 }
 
+# PID controller variables for yellow and white lines following
+yellow_white_pid = {
+    "kp": -0.015, #-0.025
+    "ki": 0,
+    "kd": -0.01, #-0.0125
+    "previous_error": 0,
+    "integral": 0
+}
+
 bot_pid = {
     "kp": 0.01, 
     "ki": 0,
@@ -43,7 +52,7 @@ def pid_controller_v_omega(error, pid_values, rate, reset=False):
     omega = None
     if error is not None:
         omega = pid_controller(pid_values, error, dt, reset=reset)
-        clamp_value = math.pi * 1
+        clamp_value = (3*math.pi)/2 * 1
         omega = max(-clamp_value, min(omega, clamp_value))
     # return the calculated v and omega
     if error is None:
