@@ -265,6 +265,7 @@ class VehicleDetection(DTROS):
 
             return list_of_tuples   # ndarray
         else:
+            return None
             blob_points = self.simple_blob_detector.detect(image_cv) # get the points
             # remove outliers
             blob_points = [np.array(p.pt) for p in blob_points]
