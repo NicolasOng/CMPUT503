@@ -15,7 +15,7 @@ from camera_detection import CameraDetectionNode
 import threading
 import math
 
-from pid_controller import simple_pid, pid_controller_v_omega
+from pid_controller import simple_pid, pid_controller_v_omega, yellow_white_pid
 
 class TailBot(DTROS):
     def __init__(self, node_name):
@@ -148,13 +148,14 @@ class TailBot(DTROS):
                 lane_error_valid_before = True
             start_time = rospy.Time.now()
             # do the lane following
-            v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
+            v, omega = pid_controller_v_omega(self.lane_error, yellow_white_pid, rate_int, False)
+            rospy.loginfo(f"lane error: {self.lane_error} v: {v} omega: {omega}")
             self.set_velocities(v, omega)
 
             # lane_error_valid_before is a 
             # hack for so that bot will not immediately turn right during initialization of the node. since lane_error is None at init
-            if self.lane_error is None and lane_error_valid_before: 
-                self.drive_turn_right(math.pi / 8, -3.5, 0.2)
+            #if self.lane_error is None and lane_error_valid_before: 
+            #    self.drive_turn_right(math.pi / 8, -3.5, 0.2)
 
             # stop if the bot is too close to the other bot
             if self.other_bot_info is not None and self.other_bot_info["pixel_distance"] <= 55:
@@ -283,5 +284,5 @@ if __name__ == '__main__':
     node.Tail()
     #node.drive_turn_left()
     #node.drive_turn_right()
-    node.on_shutdown()
+    #node.on_shutdown()
     rospy.spin()
