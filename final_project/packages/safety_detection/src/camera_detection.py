@@ -126,6 +126,7 @@ class CameraDetectionNode(DTROS):
         self.draw_bounding_boxes = True
         self.draw_atag_toggle = False
         self.draw_duckies = False
+        self.draw_duckiebot = False
 
         # if the bot puts the white line on the right or left
         self.white_on_right = True
