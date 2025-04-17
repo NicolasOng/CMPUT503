@@ -29,12 +29,17 @@ class Pedestrians(DTROS):
 
         # ground color detection
         self.closest_blue = float('inf')
+        self.closest_red = float('inf')
         self.blue_cooldown = 0
         self.color_coords_topic = rospy.Subscriber(f"/{self.vehicle_name}/color_coords", String, self.color_coords_callback)
 
         # pedestrian detection
         self.pedestrians_detected = False
         self.pedestrians_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckies_info", String, self.pedestrians_callback)
+
+        # duckiebot detection
+        self.duckiebot_area = 0
+        self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
 
     def lane_error_callback(self, msg):
         '''
@@ -63,6 +68,8 @@ class Pedestrians(DTROS):
         color_coords = json.loads(msg.data)
         # get the closest blue color
         self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1])['center'][1] if color_coords["blue"] else float('inf')
+        # get the closest red color
+        self.closest_red = min(color_coords["red"], key=lambda item: item['center'][1])['center'][1] if color_coords["red"] else float('inf')
     
     def pedestrians_callback(self, msg):
         '''
@@ -73,6 +80,15 @@ class Pedestrians(DTROS):
         '''
         pedestrians_json = msg.data
         self.pedestrians_detected = json.loads(pedestrians_json)["duckie_exist"]
+
+    def duckiebot_callback(self, msg):
+        '''
+        msg = {
+            "duckiebot_mask_area": mask_area,
+        }
+        '''
+        pedestrians_json = msg.data
+        self.duckiebot_area = json.loads(pedestrians_json)["duckiebot_mask_area"]
     
     def set_velocities(self, linear, rotational):
         '''
@@ -105,6 +121,26 @@ class Pedestrians(DTROS):
                     rate.sleep()
                 # reset the start time, so time is not counted while waiting for pedestrians
                 start_time = rospy.Time.now()
+            # if the bot is at a duckiebot,
+            if self.duckiebot_area > 40000:
+                rospy.loginfo(f'duckiebot detected: {self.duckiebot_area}')
+                # stop the bot
+                self.set_velocities(0, 0)
+                # wait for 1s,
+                rospy.sleep(3)
+                # and continue waiting until no duckiebot is detected
+                while self.duckiebot_area > 40000 and not rospy.is_shutdown():
+                    rospy.loginfo(f'duckiebot still detected: {self.duckiebot_area}')
+                    rate.sleep()
+            # if the bot is at a red tape,
+            if self.closest_red < 200:
+                rospy.loginfo(f'detected red line, stopping.')
+                # stop the bot
+                self.set_velocities(0, 0)
+                # wait for 1s,
+                rospy.sleep(3)
+                rospy.loginfo(f'DONE SECTION1')
+                break
             rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()

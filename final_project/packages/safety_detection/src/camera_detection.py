@@ -30,6 +30,7 @@ class CameraDetectionNode(DTROS):
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
         self.camera_detection_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_detection_image", Image, queue_size=1)
         self.yellow_cropped_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_yellow_cropped", Image, queue_size=1)
+        self.duckiebot_pub = rospy.Publisher(f"/{self.vehicle_name}/duckiebot_area", String, queue_size=1)
 
         # AprilTag Publishers
         self.tag_id_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_id", String, queue_size=1)
@@ -153,6 +154,15 @@ class CameraDetectionNode(DTROS):
         ], np.int32)
         self.lane_mask_white = np.zeros((self.cam_h, self.cam_w), dtype=np.uint8)
         cv2.fillPoly(self.lane_mask_white, [self.polygon_points_white], 255)
+
+        self.polygon_points_bottom = np.array([
+            [0, 0],   # Top-left
+            [self.cam_w, 0],       # Top-right
+            [self.cam_w, 80 * self.cam_h // 100],       # bottom-right
+            [0, 80 * self.cam_h // 100],   # bottom-left
+        ], np.int32)
+        self.bottom_mask = np.zeros((self.cam_h, self.cam_w), dtype=np.uint8)
+        cv2.fillPoly(self.bottom_mask, [self.polygon_points_bottom], 255)
     
     def white_line_loc_cb(self, msg):
         m_json = msg.data
@@ -524,6 +534,61 @@ class CameraDetectionNode(DTROS):
                 cv2.rectangle(draw_image, (x, y), (x + w, y + h), (0, 165, 255), 2)
         
         return draw_image 
+    
+    def convert_hsv(self, hue, saturation, value):
+        '''
+        from custom:
+        Hue: [0, 355]
+        Saturation: [0, 100]
+        Value: [0, 100]
+        to opencv:
+        Hue: [0,179]
+        Saturation: [0,255]
+        Value: [0,255]
+        '''
+        # Convert hue from [0, 355] to [0, 179]
+        ocv_hue = int((hue / 355) * 179)
+
+        # Convert saturation and value from [0, 100] to [0, 255]
+        ocv_saturation = int((saturation / 100) * 255)
+        ocv_value = int((value / 100) * 255)
+
+        return [ocv_hue, ocv_saturation, ocv_value]
+
+    def perform_duckie_bot_detection(self, clean_image, draw_image):
+        lower = np.array(self.convert_hsv(140, 40, 20), np.uint8)
+        upper = np.array(self.convert_hsv(240, 100, 100), np.uint8)
+        hsv_frame = cv2.cvtColor(clean_image, cv2.COLOR_BGR2HSV)
+        kernel = np.ones((5, 5), np.uint8)
+
+        # Create color mask
+        color_mask = cv2.inRange(hsv_frame, lower, upper)
+        color_mask = cv2.dilate(color_mask, kernel)
+
+        # mask out bottom part of the image
+        # only look at colors in the lane:
+        color_mask = cv2.bitwise_and(color_mask, self.bottom_mask)
+
+        # Get the number of white pixels (value = 255)
+        mask_area = cv2.countNonZero(color_mask)
+        msg = {
+            "duckiebot_mask_area": mask_area,
+        }
+        self.duckiebot_pub.publish(json.dumps(msg))
+        rospy.loginfo(f"MASK SIZE: {mask_area}")
+        
+        if self.draw_duckiebot:
+            big_contours = []
+            contours, _ = cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                if area > 1000:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    big_contours.append((x, y, w, h))
+                    cv2.rectangle(draw_image, (x, y), (x + w, y + h), (153, 135, 46), 2)
+                    cv2.putText(draw_image, f"{mask_area}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (153, 135, 46), 2)
+        
+        return draw_image 
         
     def perform_camera_detection(self):
         rate = rospy.Rate(10)
@@ -546,6 +611,8 @@ class CameraDetectionNode(DTROS):
 
             # perform duckie detection
             draw_image = self.perform_duckie_detection(clean_image.copy(), draw_image)
+
+            draw_image = self.perform_duckie_bot_detection(clean_image.copy(), draw_image)
                 
             # publish the image
             self.camera_detection_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
@@ -553,8 +620,8 @@ class CameraDetectionNode(DTROS):
             rate.sleep()
             end_time = rospy.Time.now()
             duration = (end_time - start_time).to_sec()
-            #rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
-            #rospy.loginfo(f"---")
+            rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+            rospy.loginfo(f"---")
 
 
     def on_shutdown(self):
