@@ -154,8 +154,8 @@ class TailBot(DTROS):
 
             # lane_error_valid_before is a 
             # hack for so that bot will not immediately turn right during initialization of the node. since lane_error is None at init
-            if self.lane_error is None and lane_error_valid_before: 
-                self.drive_turn_right(math.pi / 8, -3.5, 0.2)
+            #if self.lane_error is None and lane_error_valid_before: 
+            #    self.drive_turn_right(math.pi / 8, -3.5, 0.2)
 
             # stop if the bot is too close to the other bot
             if self.other_bot_info is not None and self.other_bot_info["pixel_distance"] <= 55:
@@ -284,5 +284,5 @@ if __name__ == '__main__':
     node.Tail()
     #node.drive_turn_left()
     #node.drive_turn_right()
-    node.on_shutdown()
+    #node.on_shutdown()
     rospy.spin()

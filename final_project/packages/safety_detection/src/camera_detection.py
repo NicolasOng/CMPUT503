@@ -29,6 +29,7 @@ class CameraDetectionNode(DTROS):
         self.color_coords_topic = rospy.Publisher(f"/{self.vehicle_name}/color_coords", String, queue_size=1)
         self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
         self.camera_detection_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_detection_image", Image, queue_size=1)
+        self.yellow_cropped_image_topic = rospy.Publisher(f"/{self.vehicle_name}/camera_yellow_cropped", Image, queue_size=1)
 
         # AprilTag Publishers
         self.tag_id_pub = rospy.Publisher(f"/{self.vehicle_name}/tag_id", String, queue_size=1)
@@ -348,30 +349,30 @@ class CameraDetectionNode(DTROS):
     def perform_simple_lane_detection(self, clean_image, draw_image):
         if self.camera_image is None: return draw_image
         # crop image to a strip around the bottom
-        image = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
-        # crop the left or right half off
+        #image = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
+        ## crop the left or right half off
         x_offset = 0
-        if self.white_on_right:
-            x_offset = int(self.cam_w / 2)
-            image = image[:, int(self.cam_w / 2):int(self.cam_w)]
-        else:
-            image = image[:, int(0):int(self.cam_w / 2)]
-        # do color detection for the white line, get the biggest white blob
-        white_bb = self.get_largest_bounding_box(Color.WHITE, image)
-        white_center = None
-        if white_bb is not None:
-            white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
-        # get its distance from the left side of the image, plus some offset
-        white_error = None
-        if white_center is not None:
-            if self.white_on_right:
-                # negative error - bot should turn left.
-                white_error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
-            else:
-                white_error = white_center[0] - (0 + self.simple_offset)
-
+        #if self.white_on_right:
+        #    x_offset = int(self.cam_w / 2)
+        #    image = image[:, int(self.cam_w / 2):int(self.cam_w)]
+        #else:
+        #    image = image[:, int(0):int(self.cam_w / 2)]
+        # WHITE LINE ----- do color detection for the white line, get the biggest white blob
+#        white_bb = self.get_largest_bounding_box(Color.WHITE, image)
+#        white_center = None
+#        if white_bb is not None:
+#            white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
+#        # get its distance from the left side of the image, plus some offset
+#        white_error = None
+#        if white_center is not None:
+#            if self.white_on_right:
+#                # negative error - bot should turn left.
+#                white_error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
+#            else:
+#                white_error = white_center[0] - (0 + self.simple_offset)
+#
         # ----------- YELLOW lINE DETECTION (assume yellow is always on the left) -----------
-        image_yellow_crop = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
+        image_yellow_crop = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 1), int(0):int(self.cam_w)]
         image_yellow_crop = image_yellow_crop[:, int(0):int(self.cam_w / 2)]  # bottom left of the image
         yellow_bb = self.get_largest_bounding_box(Color.YELLOW, image_yellow_crop)
         yellow_center = None
@@ -382,12 +383,14 @@ class CameraDetectionNode(DTROS):
         if yellow_center is not None:
             yellow_error = yellow_center[0] - (0 + self.simple_offset)
         # ---------------------------------------------------------
-        final_error = white_error
-        if yellow_error is not None:
-            if white_error is None:
-                final_error = yellow_error
-            else:
-                final_error = (white_error + yellow_error) / 2
+        #final_error = white_error
+        #if yellow_error is not None:
+        #    if white_error is None:
+        #        final_error = yellow_error
+        #    else:
+        #        final_error = (white_error + yellow_error) / 2
+        # todo remove
+        final_error = yellow_error
 
         lane_errors = {
             "lane_error": final_error
@@ -399,16 +402,16 @@ class CameraDetectionNode(DTROS):
         if self.draw_lane_detection:
             line_1 = int(self.simple_offset + x_offset)
             cv2.line(draw_image, (line_1, int(self.cam_h * 0.7)), (line_1, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
-            line_2 = int(self.cam_w / 2 - self.simple_offset + x_offset)
-            cv2.line(draw_image, (line_2, int(self.cam_h * 0.7)), (line_2, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
-            if white_bb is not None:
-                draw_white_bb = list(white_bb)
-                draw_white_bb[0] += int(x_offset)
-                draw_white_bb[1] += int(self.cam_h * 0.7)
-                draw_white_center = list(white_center)
-                draw_white_center[0] += int(x_offset)
-                draw_white_center[1] += int(self.cam_h * 0.7)
-                self.draw_bounding_box(draw_image, draw_white_bb, draw_white_center, white_center, Color.BLUE)
+            #line_2 = int(self.cam_w / 2 - self.simple_offset + x_offset)
+            #cv2.line(draw_image, (line_2, int(self.cam_h * 0.7)), (line_2, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
+            #if white_bb is not None:
+            #    draw_white_bb = list(white_bb)
+            #    draw_white_bb[0] += int(x_offset)
+            #    draw_white_bb[1] += int(self.cam_h * 0.7)
+            #    draw_white_center = list(white_center)
+            #    draw_white_center[0] += int(x_offset)
+            #    draw_white_center[1] += int(self.cam_h * 0.7)
+            #    self.draw_bounding_box(draw_image, draw_white_bb, draw_white_center, white_center, Color.BLUE)
             if yellow_bb is not None:
                 x_offset = 0 
                 draw_yellow_bb = list(yellow_bb)
@@ -420,6 +423,7 @@ class CameraDetectionNode(DTROS):
                 self.draw_bounding_box(draw_image, draw_yellow_bb, draw_yellow_center, yellow_center, Color.YELLOW)
 
             self.draw_lane_error_value(draw_image, final_error)
+            #self.yellow_cropped_image_topic.publish(self.bridge.cv2_to_imgmsg(image_yellow_crop, encoding="bgr8"))
         return draw_image
     
     # Draws a bounding box and ID on an ApriltTag 
