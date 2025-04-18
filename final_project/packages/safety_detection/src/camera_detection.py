@@ -122,8 +122,8 @@ class CameraDetectionNode(DTROS):
         }
         
         # Draw Toggles
-        self.draw_lane_detection = True
-        self.draw_bounding_boxes = True
+        self.draw_lane_detection = False
+        self.draw_bounding_boxes = False
         self.draw_atag_toggle = False
         self.draw_duckies = False
         self.draw_duckiebot = False
@@ -360,30 +360,30 @@ class CameraDetectionNode(DTROS):
     def perform_simple_lane_detection(self, clean_image, draw_image):
         if self.camera_image is None: return draw_image
         # crop image to a strip around the bottom
-        #image = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
+        image = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
         ## crop the left or right half off
         x_offset = 0
-        #if self.white_on_right:
-        #    x_offset = int(self.cam_w / 2)
-        #    image = image[:, int(self.cam_w / 2):int(self.cam_w)]
-        #else:
-        #    image = image[:, int(0):int(self.cam_w / 2)]
+        if self.white_on_right:
+            x_offset = int(self.cam_w / 2)
+            image = image[:, int(self.cam_w / 2):int(self.cam_w)]
+        else:
+            image = image[:, int(0):int(self.cam_w / 2)]
         # WHITE LINE ----- do color detection for the white line, get the biggest white blob
-#        white_bb = self.get_largest_bounding_box(Color.WHITE, image)
-#        white_center = None
-#        if white_bb is not None:
-#            white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
-#        # get its distance from the left side of the image, plus some offset
-#        white_error = None
-#        if white_center is not None:
-#            if self.white_on_right:
-#                # negative error - bot should turn left.
-#                white_error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
-#            else:
-#                white_error = white_center[0] - (0 + self.simple_offset)
-#
+        white_bb = self.get_largest_bounding_box(Color.WHITE, image)
+        white_center = None
+        if white_bb is not None:
+            white_center = (white_bb[0] + white_bb[2] / 2, white_bb[1] + white_bb[3] / 2)
+        # get its distance from the left side of the image, plus some offset
+        white_error = None
+        if white_center is not None:
+            if self.white_on_right:
+                # negative error - bot should turn left.
+                white_error = white_center[0] - (self.cam_w / 2 - self.simple_offset)
+            else:
+                white_error = white_center[0] - (0 + self.simple_offset)
+
         # ----------- YELLOW lINE DETECTION (assume yellow is always on the left) -----------
-        image_yellow_crop = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 1), int(0):int(self.cam_w)]
+        image_yellow_crop = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
         image_yellow_crop = image_yellow_crop[:, int(0):int(self.cam_w / 2)]  # bottom left of the image
         yellow_bb = self.get_largest_bounding_box(Color.YELLOW, image_yellow_crop)
         yellow_center = None
@@ -401,10 +401,11 @@ class CameraDetectionNode(DTROS):
         #    else:
         #        final_error = (white_error + yellow_error) / 2
         # todo remove
-        final_error = yellow_error
+        #final_error = yellow_error
 
         lane_errors = {
-            "lane_error": final_error
+            "yellow_lane_error": yellow_error,
+            "white_lane_error": white_error,
         }
         #rospy.loginfo(f"Lane error: {error}")
         json_le = json.dumps(lane_errors)
@@ -413,8 +414,8 @@ class CameraDetectionNode(DTROS):
         if self.draw_lane_detection:
             line_1 = int(self.simple_offset + x_offset)
             cv2.line(draw_image, (line_1, int(self.cam_h * 0.7)), (line_1, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
-            #line_2 = int(self.cam_w / 2 - self.simple_offset + x_offset)
-            #cv2.line(draw_image, (line_2, int(self.cam_h * 0.7)), (line_2, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
+            line_2 = int(self.simple_offset)
+            cv2.line(draw_image, (line_2, int(self.cam_h * 0.7)), (line_2, int(self.cam_h * 0.9)), color=self.color_to_bgr[Color.BLUE], thickness=1)
             #if white_bb is not None:
             #    draw_white_bb = list(white_bb)
             #    draw_white_bb[0] += int(x_offset)
@@ -433,6 +434,7 @@ class CameraDetectionNode(DTROS):
                 draw_yellow_center[1] += int(self.cam_h * 0.7)
                 self.draw_bounding_box(draw_image, draw_yellow_bb, draw_yellow_center, yellow_center, Color.YELLOW)
 
+            final_error = yellow_error if yellow_error is not None else white_error
             self.draw_lane_error_value(draw_image, final_error)
             #self.yellow_cropped_image_topic.publish(self.bridge.cv2_to_imgmsg(image_yellow_crop, encoding="bgr8"))
         return draw_image
@@ -576,7 +578,7 @@ class CameraDetectionNode(DTROS):
             "duckiebot_mask_area": mask_area,
         }
         self.duckiebot_pub.publish(json.dumps(msg))
-        rospy.loginfo(f"MASK SIZE: {mask_area}")
+        #rospy.loginfo(f"MASK SIZE: {mask_area}")
         
         if self.draw_duckiebot:
             big_contours = []
@@ -608,7 +610,7 @@ class CameraDetectionNode(DTROS):
             # peform colored tape detection
             draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
             # perform apriltags detection
-            draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
+            #draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
 
             # perform duckie detection
             draw_image = self.perform_duckie_detection(clean_image.copy(), draw_image)
@@ -621,8 +623,8 @@ class CameraDetectionNode(DTROS):
             rate.sleep()
             end_time = rospy.Time.now()
             duration = (end_time - start_time).to_sec()
-            rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
-            rospy.loginfo(f"---")
+            #rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+            #rospy.loginfo(f"---")
 
 
     def on_shutdown(self):

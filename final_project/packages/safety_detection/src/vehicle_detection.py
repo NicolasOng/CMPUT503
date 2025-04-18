@@ -93,21 +93,10 @@ class VehicleDetection(DTROS):
         self.circle_img_pub = rospy.Publisher(f"/{self.vehicle_name}/circle_img", Image, queue_size=1)
 
         self.white_line_pub = rospy.Publisher(f"/{self.vehicle_name}/white_line_right", String, queue_size=1)
-        self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
-        self.lane_error_topic = rospy.Publisher(f"/{self.vehicle_name}/lane_error", String, queue_size=1)
 
 
 
         return
-
-    def lane_error_callback(self, msg):
-        '''
-        lane_error = {
-            "lane_error": error
-        }
-        '''
-        meas_json = msg.data
-        self.lane_error = json.loads(meas_json)["lane_error"]
 
     def fill_blob_detector_params(self):
         self.blob_detector_params.minArea = 10

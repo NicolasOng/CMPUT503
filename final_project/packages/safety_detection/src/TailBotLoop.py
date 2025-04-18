@@ -23,7 +23,8 @@ class TailBot(DTROS):
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         # lane following
-        self.lane_error = None
+        self.yellow_lane_error = None
+        self.white_lane_error = None
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
@@ -78,7 +79,8 @@ class TailBot(DTROS):
         }
         '''
         le_json = msg.data
-        self.lane_error = json.loads(le_json)["lane_error"]
+        self.yellow_lane_error = json.loads(le_json)["yellow_lane_error"]
+        self.white_lane_error = json.loads(le_json)["white_lane_error"]
     
     def color_coords_callback(self, msg):
         '''
@@ -144,17 +146,24 @@ class TailBot(DTROS):
         rate = rospy.Rate(rate_int)
         lane_error_valid_before = False  
         while not rospy.is_shutdown():
-            if self.lane_error is not None: 
+            if self.yellow_lane_error is not None: 
                 lane_error_valid_before = True
             start_time = rospy.Time.now()
             # do the lane following
-            v, omega = pid_controller_v_omega(self.lane_error, yellow_white_pid, rate_int, False)
-            rospy.loginfo(f"lane error: {self.lane_error} v: {v} omega: {omega}")
+            if self.yellow_lane_error is not None:
+                v, omega = pid_controller_v_omega(self.yellow_lane_error, yellow_white_pid, rate_int, False)
+            elif self.white_lane_error is not None:
+                v, omega = pid_controller_v_omega(self.white_lane_error, simple_pid, rate_int, False)
+            else:
+                v, omega = 0, 0
+
+            rospy.loginfo(f"yello error: {self.yellow_lane_error}; white error {self.white_lane_error};  v: {v} omega: {omega}")
+
             self.set_velocities(v, omega)
 
             # lane_error_valid_before is a 
             # hack for so that bot will not immediately turn right during initialization of the node. since lane_error is None at init
-            #if self.lane_error is None and lane_error_valid_before: 
+            #if self.yellow_lane_error is None and lane_error_valid_before: 
             #    self.drive_turn_right(math.pi / 8, -3.5, 0.2)
 
             # stop if the bot is too close to the other bot
@@ -164,7 +173,7 @@ class TailBot(DTROS):
                 
             if self.other_bot_info is not None:
                 rospy.loginfo(f"turn left?: {self.other_bot_info['turning_left']} bot error {self.other_bot_info['bot_error']} \
-                              pixel distance: {self.other_bot_info['pixel_distance']} omega: {omega} v: {v}; lane error: {self.lane_error}")
+                              pixel distance: {self.other_bot_info['pixel_distance']} omega: {omega} v: {v}; lane error: {self.yellow_lane_error}")
                 pass
             
             if self.closest_red < 150 and self.red_cooldown == 0 and True:
@@ -239,7 +248,7 @@ class TailBot(DTROS):
         rospy.loginfo("Turning left")
         import math
         turn_param = {
-            "angle": math.pi / 1.9,  # actual angle to turn
+            "angle": math.pi / 1.8,  # actual angle to turn
             "theta": 0.5,  # for twisted2D
             "speed": 0.3,
             "leds": False
@@ -277,6 +286,18 @@ class TailBot(DTROS):
         # on shutdown,
         self.set_velocities(0, 0)
 
+
+
+    def dummy(self):
+        rate_int = 10
+        rate = rospy.Rate(rate_int)
+        rospy.loginfo("Dummy function")
+        self.drive_turn_left()
+        while not rospy.is_shutdown():
+            rate.sleep()
+
+
+
 if __name__ == '__main__':
     node = TailBot(node_name='tail')
     rospy.sleep(2)
@@ -284,5 +305,5 @@ if __name__ == '__main__':
     node.Tail()
     #node.drive_turn_left()
     #node.drive_turn_right()
-    #node.on_shutdown()
+    #node.dummy()
     rospy.spin()
