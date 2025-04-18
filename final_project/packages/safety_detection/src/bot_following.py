@@ -22,6 +22,13 @@ class BotFollowing(DTROS):
         super(BotFollowing, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
+        # odometry topic
+        self.ctheta = 0
+        self.cpos = 0
+        self.xpos = 0
+        self.ypos = 0
+        self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/odometry", String, self.odometry_callback)
+
         # lane following
         self.lane_error = None
         self.lane_pid_values = simple_pid
@@ -38,6 +45,20 @@ class BotFollowing(DTROS):
         self.duckiebot_area = 0
         self.bot_error = 0
         self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
+
+    def odometry_callback(self, msg):
+        '''
+        odometry_data = {
+            "cpos": self.cpos,
+            "ctheta": self.ctheta,
+            ...
+        }
+        '''
+        odometry_data = json.loads(msg.data)
+        self.ctheta = odometry_data["ctheta"]
+        self.cpos = odometry_data["cpos"]
+        self.xpos = odometry_data["xpos"]
+        self.ypos = odometry_data["ypos"]
 
     def lane_error_callback(self, msg):
         '''
@@ -102,6 +123,23 @@ class BotFollowing(DTROS):
         rotational = radians/s
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
+
+    def drive_arc(self, distance, theta, speed=0.23):
+        '''
+        theta in radians/s, where -1 is left turn, 1 is right turn
+        0 is straight
+        distance should be positive
+        speed should be in [-1, 1]
+        '''
+        starting_cpos = self.cpos
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.set_velocities(speed, theta)
+            cur_meters = self.cpos - starting_cpos
+            if cur_meters >= distance:
+                break
+            rate.sleep()
+        self.set_velocities(0, 0)
     
     def bot_following(self):
         rate_int = 10
@@ -111,17 +149,20 @@ class BotFollowing(DTROS):
             # do the bot and lane following
             v, omega = bot_and_lane_controller(self.lane_error, self.bot_error, self.lane_pid_values, bot_following_pid, rate_int, False)
             self.set_velocities(v, omega)
-            rospy.loginfo(f'lane_error: {self.lane_error}, bot error: {self.bot_error}, v: {v}, omega: {omega}')
-            #rospy.loginfo(f'closest red: {self.closest_red}, red cooldown: {self.red_cooldown}')
+            #rospy.loginfo(f'lane_error: {self.lane_error}, bot error: {self.bot_error}, v: {v}, omega: {omega}')
+            rospy.loginfo(f'closest red: {self.closest_red}, red cooldown: {self.red_cooldown}')
+            rospy.loginfo(f'xpos: {self.xpos}, ypos: {self.ypos}')
             # if the bot is at a red tape,
-            if self.closest_red < 200 and self.red_cooldown == 0:
+            if self.closest_red < 135 and self.red_cooldown == 0:
                 rospy.loginfo(f'detected red line, stopping.')
                 self.red_cooldown = 5
                 # stop the bot
-                #self.set_velocities(0, 0)
+                self.set_velocities(0, 0)
                 # wait for 1s,
-                #rospy.sleep(3)
-                # rospy.loginfo(f'DONE SECTION1')
+                rospy.sleep(1)
+                # do a left turn
+                # 0.2 is good for the top one
+                self.drive_arc(0.60, math.pi * 0.27)
                 # break
             rate.sleep()
             # update the cooldowns

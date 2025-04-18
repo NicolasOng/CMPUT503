@@ -76,15 +76,10 @@ class CameraDetectionNode(DTROS):
 
         # Color Detection Stuff
         # color detection parameters in HSV format
-        # Define range
-        hr = 40
-        sr = 50
-        vr = 50
-        #red_hsv = np.array([0, 144, 255])  # rGB: 255, 111, 111
-        #self.red_lower = np.array([max(0, red_hsv[0] - hr), max(0, red_hsv[1] - sr), max(0, red_hsv[2] - vr)])
-        #self.red_upper = np.array([min(179, red_hsv[0] + hr), min(255, red_hsv[1] + sr), min(255, red_hsv[2] + vr)])
-        self.red_lower = np.array([136, 87, 111], np.uint8)
-        self.red_upper = np.array([180, 255, 255], np.uint8)
+        # self.red_lower = np.array([136, 87, 111], np.uint8)
+        # self.red_upper = np.array([180, 255, 255], np.uint8)
+        self.red_lower = np.array([0, 127, 127], np.uint8)
+        self.red_upper = np.array([20, 255, 255], np.uint8)
 
         self.green_lower = np.array([34, 52, 72], np.uint8)
         self.green_upper = np.array([82, 255, 255], np.uint8)
@@ -122,11 +117,12 @@ class CameraDetectionNode(DTROS):
         }
         
         # Draw Toggles
-        self.draw_lane_detection = False
-        self.draw_bounding_boxes = False
-        self.draw_atag_toggle = False
-        self.draw_duckies = False
-        self.draw_duckiebot = False
+        self.master_draw = True
+        self.draw_lane_detection = True and self.master_draw
+        self.draw_bounding_boxes = True and self.master_draw
+        self.draw_atag_toggle = True and self.master_draw
+        self.draw_duckies = True and self.master_draw
+        self.draw_duckiebot = True and self.master_draw
 
         # if the bot puts the white line on the right or left
         self.white_on_right = True

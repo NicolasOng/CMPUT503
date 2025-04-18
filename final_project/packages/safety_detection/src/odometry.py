@@ -107,7 +107,7 @@ class OdometryNode(DTROS):
             # log some info and publish to a topic
             #rospy.loginfo(f'left: {dlticks}, right: {drticks}')
             #rospy.loginfo(f'num rots: {self.theta / (math.pi*2):.2f}')
-            #rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
+            rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
             odometry_data = {
                 "time": cur_time.to_sec(),
                 "interval": dtime,

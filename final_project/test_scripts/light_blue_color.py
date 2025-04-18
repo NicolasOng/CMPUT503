@@ -78,8 +78,18 @@ if __name__ == "__main__":
     image = cv2.imread(f"photos/{args.input}.png")
     image = undistort_image(image)
 
+    # duckiebot color
     lower = np.array(convert_hsv(140, 40, 20), np.uint8)
     upper = np.array(convert_hsv(240, 100, 100), np.uint8)
+
+    # red color
+    #lower = np.array(convert_hsv(200, 60, 60), np.uint8)
+    #upper = np.array(convert_hsv(355, 100, 100), np.uint8)
+    print(convert_hsv(0, 50, 50))
+    print(convert_hsv(40, 100, 100))
+    lower = np.array(convert_hsv(0, 50, 50), np.uint8)
+    upper = np.array(convert_hsv(40, 100, 100), np.uint8)
+
     mask = get_color_mask_custom(lower, upper, image)
 
     result_img = cv2.bitwise_and(image, image, mask=mask)
