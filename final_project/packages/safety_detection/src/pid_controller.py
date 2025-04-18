@@ -18,10 +18,11 @@ yellow_white_pid = {
     "integral": 0
 }
 
-bot_pid = {
-    "kp": 0.01, 
+# bot pid values
+bot_following_pid = {
+    "kp": 0.000023, #[0.00001, 0.000025]
     "ki": 0,
-    "kd": 0.0125, #-0.0125
+    "kd": 0,
     "previous_error": 0,
     "integral": 0
 }
@@ -59,3 +60,25 @@ def pid_controller_v_omega(error, pid_values, rate, reset=False):
         return 0, 0
     else:
         return 0.23, omega
+
+def bot_and_lane_controller(lane_error, bot_error, lane_pid, bot_pid, rate, reset=False):
+    dt = 1 / rate
+    # feed the error into the pid function to get the amount to turn the bot
+    # also do clamping
+    omega = None
+    if lane_error is not None:
+        omega = pid_controller(lane_pid, lane_error, dt, reset=reset)
+        clamp_value = (math.pi) * 1
+        #omega = max(-clamp_value, min(omega, clamp_value))
+    v = 0.23
+    if bot_error is not None:
+        v = pid_controller(bot_pid, bot_error, dt, reset=reset)
+        max_v = 0.23
+        min_v = 0
+        v = max(min_v, min(v, max_v))
+
+    # set velocity to 0 if lane is not seen
+    if omega is None: v = 0
+
+    # return the calculated v and omega
+    return v, omega

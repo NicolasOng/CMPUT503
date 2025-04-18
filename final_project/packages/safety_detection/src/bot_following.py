@@ -15,31 +15,28 @@ from camera_detection import CameraDetectionNode
 import threading
 import math
 
-from pid_controller import simple_pid, yellow_white_pid, pid_controller_v_omega
+from pid_controller import simple_pid, yellow_white_pid, bot_following_pid, bot_and_lane_controller
 
-class Pedestrians(DTROS):
+class BotFollowing(DTROS):
     def __init__(self, node_name):
-        super(Pedestrians, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
+        super(BotFollowing, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         # lane following
         self.lane_error = None
-        self.pid_values = simple_pid
+        self.lane_pid_values = simple_pid
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # ground color detection
         self.closest_blue = float('inf')
         self.closest_red = float('inf')
-        self.blue_cooldown = 0
+        self.red_cooldown = 0
         self.color_coords_topic = rospy.Subscriber(f"/{self.vehicle_name}/color_coords", String, self.color_coords_callback)
-
-        # pedestrian detection
-        self.pedestrians_detected = False
-        self.pedestrians_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckies_info", String, self.pedestrians_callback)
 
         # duckiebot detection
         self.duckiebot_area = 0
+        self.bot_error = 0
         self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
 
     def lane_error_callback(self, msg):
@@ -52,16 +49,16 @@ class Pedestrians(DTROS):
         yellow_lane_error = json.loads(le_json)["yellow_lane_error"]
         white_lane_error = json.loads(le_json)["white_lane_error"]
         self.lane_error = yellow_lane_error
-        self.pid_values = yellow_white_pid
+        self.lane_pid_values = yellow_white_pid
         # self.lane_error = white_lane_error
-        # self.pid_values = simple_pid
+        # self.lane_pid_values = simple_pid
 
         # if white_lane_error is None:
         #     self.lane_error = yellow_lane_error
-        #     self.pid_values = yellow_white_pid
+        #     self.lane_pid_values = yellow_white_pid
         if yellow_lane_error is None:
             self.lane_error = white_lane_error
-            self.pid_values = simple_pid
+            self.lane_pid_values = simple_pid
     
     def color_coords_callback(self, msg):
         '''
@@ -83,16 +80,6 @@ class Pedestrians(DTROS):
         self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1])['center'][1] if color_coords["blue"] else float('inf')
         # get the closest red color
         self.closest_red = min(color_coords["red"], key=lambda item: item['center'][1])['center'][1] if color_coords["red"] else float('inf')
-    
-    def pedestrians_callback(self, msg):
-        '''
-        pedestrians = {
-            "duckie_exist": bool,
-            "min_point": float
-        }
-        '''
-        pedestrians_json = msg.data
-        self.pedestrians_detected = json.loads(pedestrians_json)["duckie_exist"]
 
     def duckiebot_callback(self, msg):
         '''
@@ -104,6 +91,9 @@ class Pedestrians(DTROS):
         '''
         pedestrians_json = msg.data
         self.duckiebot_area = json.loads(pedestrians_json)["duckiebot_mask_area"]
+        self.bot_error = 20000 - self.duckiebot_area
+        if self.duckiebot_area < 10000:
+            self.bot_error = None
     
     def set_velocities(self, linear, rotational):
         '''
@@ -113,54 +103,31 @@ class Pedestrians(DTROS):
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
     
-    def pedestrians(self):
+    def bot_following(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
-            # do the lane following
-            v, omega = pid_controller_v_omega(self.lane_error, self.pid_values, rate_int, False)
+            # do the bot and lane following
+            v, omega = bot_and_lane_controller(self.lane_error, self.bot_error, self.lane_pid_values, bot_following_pid, rate_int, False)
             self.set_velocities(v, omega)
-            rospy.loginfo(f'closest blue: {self.closest_blue}, blue cooldown: {self.blue_cooldown}')
-            # if the bot is at a blue tape,
-            if self.closest_blue < 250 and self.blue_cooldown == 0:
-                self.blue_cooldown = 5
-                rospy.loginfo(f'detected blue line, stopping for 1s. pedestrians detected: {self.pedestrians_detected}')
-                # stop the bot
-                self.set_velocities(0, 0)
-                # wait for 1s,
-                rospy.sleep(3)
-                # and continue waiting until no pedestrians are detected
-                while self.pedestrians_detected and not rospy.is_shutdown():
-                    rospy.loginfo(f'pedestrians detected: {self.pedestrians_detected}')
-                    rate.sleep()
-                # reset the start time, so time is not counted while waiting for pedestrians
-                start_time = rospy.Time.now()
-            # if the bot is at a duckiebot,
-            if self.duckiebot_area > 40000:
-                rospy.loginfo(f'duckiebot detected: {self.duckiebot_area}')
-                # stop the bot
-                self.set_velocities(0, 0)
-                # wait for 1s,
-                rospy.sleep(3)
-                # and continue waiting until no duckiebot is detected
-                while self.duckiebot_area > 40000 and not rospy.is_shutdown():
-                    rospy.loginfo(f'duckiebot still detected: {self.duckiebot_area}')
-                    rate.sleep()
+            rospy.loginfo(f'lane_error: {self.lane_error}, bot error: {self.bot_error}, v: {v}, omega: {omega}')
+            #rospy.loginfo(f'closest red: {self.closest_red}, red cooldown: {self.red_cooldown}')
             # if the bot is at a red tape,
-            if self.closest_red < 200:
+            if self.closest_red < 200 and self.red_cooldown == 0:
                 rospy.loginfo(f'detected red line, stopping.')
+                self.red_cooldown = 5
                 # stop the bot
-                self.set_velocities(0, 0)
+                #self.set_velocities(0, 0)
                 # wait for 1s,
-                rospy.sleep(3)
-                rospy.loginfo(f'DONE SECTION1')
-                break
+                #rospy.sleep(3)
+                # rospy.loginfo(f'DONE SECTION1')
+                # break
             rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()
             dt = (end_time - start_time).to_sec()
-            self.blue_cooldown = max(0, self.blue_cooldown - dt)
+            self.red_cooldown = max(0, self.red_cooldown - dt)
 
     def on_shutdown(self):
         # on shutdown,
@@ -170,7 +137,7 @@ class Pedestrians(DTROS):
         self.set_velocities(0, 0)
 
 if __name__ == '__main__':
-    node = Pedestrians(node_name='pedestrians')
+    node = BotFollowing(node_name='botfollowing')
     rospy.sleep(2)
-    node.pedestrians()
+    node.bot_following()
     rospy.spin()

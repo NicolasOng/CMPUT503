@@ -568,28 +568,35 @@ class CameraDetectionNode(DTROS):
         color_mask = cv2.inRange(hsv_frame, lower, upper)
         color_mask = cv2.dilate(color_mask, kernel)
 
-        # mask out bottom part of the image
-        # only look at colors in the lane:
+        # mask out bottom part of the image (to ignore the pedestrian lines)
         color_mask = cv2.bitwise_and(color_mask, self.bottom_mask)
+
+        big_contours = []
+        big_contour_areas = []
+        contours, _ = cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 1000:
+                x, y, w, h = cv2.boundingRect(contour)
+                big_contours.append((x, y, w, h))
+                big_contour_areas.append(area)
 
         # Get the number of white pixels (value = 255)
         mask_area = cv2.countNonZero(color_mask)
         msg = {
             "duckiebot_mask_area": mask_area,
+            "contours": big_contours,
+            "contour_areas": big_contour_areas
         }
         self.duckiebot_pub.publish(json.dumps(msg))
         #rospy.loginfo(f"MASK SIZE: {mask_area}")
         
         if self.draw_duckiebot:
-            big_contours = []
-            contours, _ = cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            for contour in contours:
-                area = cv2.contourArea(contour)
+            for area, contour in zip(big_contour_areas, big_contours):
                 if area > 1000:
-                    x, y, w, h = cv2.boundingRect(contour)
-                    big_contours.append((x, y, w, h))
+                    x, y, w, h = contour
                     cv2.rectangle(draw_image, (x, y), (x + w, y + h), (153, 135, 46), 2)
-                    cv2.putText(draw_image, f"{mask_area}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (153, 135, 46), 2)
+                    cv2.putText(draw_image, f"{area}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (153, 135, 46), 2)
         
         return draw_image 
         
@@ -625,15 +632,17 @@ class CameraDetectionNode(DTROS):
 
             # save the image:
             if False:
+                print("Current working directory:", os.getcwd())
                 img_filename = os.path.join(image_dir, f"frame_{i:04d}.png")
+                print("Saving to:", os.path.abspath(img_filename))
                 i += 1
                 cv2.imwrite(img_filename, draw_image)
             # end the loop iteration
             rate.sleep()
             end_time = rospy.Time.now()
             duration = (end_time - start_time).to_sec()
-            #rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
-            #rospy.loginfo(f"---")
+            rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+            rospy.loginfo(f"---")
 
 
     def on_shutdown(self):
