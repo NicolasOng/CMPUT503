@@ -15,7 +15,7 @@ from camera_detection import CameraDetectionNode
 import threading
 import math
 
-from pid_controller import simple_pid, pid_controller_v_omega
+from pid_controller import simple_pid, yellow_white_pid, pid_controller_v_omega
 
 class Pedestrians(DTROS):
     def __init__(self, node_name):
@@ -24,6 +24,7 @@ class Pedestrians(DTROS):
 
         # lane following
         self.lane_error = None
+        self.pid_values = simple_pid
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/lane_error", String, self.lane_error_callback)
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
@@ -48,7 +49,19 @@ class Pedestrians(DTROS):
         }
         '''
         le_json = msg.data
-        self.lane_error = json.loads(le_json)["lane_error"]
+        yellow_lane_error = json.loads(le_json)["yellow_lane_error"]
+        white_lane_error = json.loads(le_json)["white_lane_error"]
+        self.lane_error = yellow_lane_error
+        self.pid_values = yellow_white_pid
+        # self.lane_error = white_lane_error
+        # self.pid_values = simple_pid
+
+        # if white_lane_error is None:
+        #     self.lane_error = yellow_lane_error
+        #     self.pid_values = yellow_white_pid
+        if yellow_lane_error is None:
+            self.lane_error = white_lane_error
+            self.pid_values = simple_pid
     
     def color_coords_callback(self, msg):
         '''
@@ -104,7 +117,7 @@ class Pedestrians(DTROS):
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
             # do the lane following
-            v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
+            v, omega = pid_controller_v_omega(self.lane_error, self.pid_values, rate_int, False)
             self.set_velocities(v, omega)
             rospy.loginfo(f'closest blue: {self.closest_blue}, blue cooldown: {self.blue_cooldown}')
             # if the bot is at a blue tape,

@@ -595,6 +595,9 @@ class CameraDetectionNode(DTROS):
         
     def perform_camera_detection(self):
         rate = rospy.Rate(10)
+        i = 0
+        image_dir = "camera_images"
+        os.makedirs(image_dir, exist_ok=True)
         while not rospy.is_shutdown():
             start_time = rospy.Time.now()
             if self.camera_image is None: continue
@@ -618,7 +621,13 @@ class CameraDetectionNode(DTROS):
             draw_image = self.perform_duckie_bot_detection(clean_image.copy(), draw_image)
                 
             # publish the image
-            self.camera_detection_image_topic.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
+            self.camera_detection_image_topic.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
+
+            # save the image:
+            if False:
+                img_filename = os.path.join(image_dir, f"frame_{i:04d}.png")
+                i += 1
+                cv2.imwrite(img_filename, draw_image)
             # end the loop iteration
             rate.sleep()
             end_time = rospy.Time.now()
