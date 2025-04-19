@@ -14,7 +14,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from duckietown_msgs.msg import Pose2DStamped, WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
 from std_msgs.msg import ColorRGBA, String
 
-from camera_detection import CameraDetectionNode, undistort_image
+from camera_detection import CameraDetectionNode
 from Color import Color
 from pid_controller import simple_pid, pid_controller_v_omega
 from safety_detection.srv import SetString, SetStringResponse
@@ -43,11 +43,30 @@ class Parking(DTROS):
         self.at_detector = dt_apriltags.Detector()
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
 
+        # camera matrix and distortion coefficients from intrinsic.yaml file
+        self.cam_matrix = np.array([
+            [319.2461317458548, 0.0, 307.91668484581703],
+            [0.0, 317.75077109798957, 255.6638447529814],
+            [0.0, 0.0, 1.0]
+        ])
+        self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
+
+
     def camera_callback(self, msg):
         # convert compressed image to cv2
         cv2_image = self.bridge.compressed_imgmsg_to_cv2(msg)
         # save the raw camera image
         self.camera_image = cv2_image
+
+
+    def undistort_image(self, cv2_img):
+        h, w = cv2_img.shape[:2]
+        # optimal camera matrix lets us see entire camera image (image edges cropped without), but some distortion visible
+        newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.cam_matrix, self.dist_coeff, (w,h), 0, (w,h))
+
+        # undistorted image using calibration parameters
+        return cv2.undistort(cv2_img, self.cam_matrix, self.dist_coeff, None)
+    
 
     def lane_error_callback(self, msg):
         '''
@@ -184,7 +203,7 @@ class Parking(DTROS):
 
             clean_image = self.camera_image.copy()
             # undistort camera image
-            clean_image = undistort_image(clean_image)
+            clean_image = self.undistort_image(clean_image)
             h, w = clean_image.shape[:2]
 
             draw_image = clean_image.copy()
