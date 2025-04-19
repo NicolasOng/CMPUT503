@@ -150,14 +150,19 @@ class TailBot(DTROS):
                 lane_error_valid_before = True
             start_time = rospy.Time.now()
             # do the lane following
+
             if self.yellow_lane_error is not None:
                 v, omega = pid_controller_v_omega(self.yellow_lane_error, yellow_white_pid, rate_int, False)
             elif self.white_lane_error is not None:
-                v, omega = pid_controller_v_omega(self.white_lane_error, simple_pid, rate_int, False)
+                v, omega = pid_controller_v_omega(self.white_lane_error * 0.9, simple_pid, rate_int, False)
             else:
                 v, omega = 0, 0
 
-            rospy.loginfo(f"yello error: {self.yellow_lane_error}; white error {self.white_lane_error};  v: {v} omega: {omega}")
+            #rospy.loginfo(f"yello error: {self.yellow_lane_error}; white error {self.white_lane_error};  v: {v} omega: {omega}")
+            msg = f"yello error: {self.yellow_lane_error}; white error {self.white_lane_error};  v: {v} omega: {omega} "
+            if self.other_bot_info is not None:
+                msg += f'turn left?: {self.other_bot_info["turning_left"]} bot error {self.other_bot_info["bot_error"]}'
+            rospy.loginfo(msg)
 
             self.set_velocities(v, omega)
 
@@ -171,10 +176,6 @@ class TailBot(DTROS):
                 self.set_velocities(0, 0)
             
                 
-            if self.other_bot_info is not None:
-                rospy.loginfo(f"turn left?: {self.other_bot_info['turning_left']} bot error {self.other_bot_info['bot_error']} \
-                              pixel distance: {self.other_bot_info['pixel_distance']} omega: {omega} v: {v}; lane error: {self.yellow_lane_error}")
-                pass
             
             if self.closest_red < 150 and self.red_cooldown == 0 and True:
                 self.on_red_line()

@@ -18,7 +18,7 @@ from cv_bridge import CvBridge
 import numpy as np
 from safety_detection.srv import SetString, SetStringResponse
 
-from pid_controller import pid_controller_v_omega, simple_pid, bot_pid
+from pid_controller import pid_controller_v_omega, simple_pid
 from collections import deque
 import numpy as np
 
@@ -50,6 +50,14 @@ class VehicleDetection(DTROS):
         self.fill_blob_detector_params()
         self.simple_blob_detector = cv2.SimpleBlobDetector_create(self.blob_detector_params)
 
+
+
+        # duckiebot detection
+        self.duckiebot_area = 0
+        self.bot_error = 0
+        self.bot_center_x = -1
+        self.bot_error_deque = deque(maxlen=3)
+        self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
 
         # robot position in the projected ground plane,
         # below the center of the image by some distance (mm)
@@ -88,13 +96,13 @@ class VehicleDetection(DTROS):
         self.stop_flag = False
 
         self.other_bot_info_pub = rospy.Publisher(f"/{self.vehicle_name}/other_bot_info", String, queue_size=1)
-        self.camera_sub = rospy.Subscriber(f"/{self.vehicle_name}/camera_node/image/compressed", CompressedImage, self.image_callback)
+        #self.camera_sub = rospy.Subscriber(f"/{self.vehicle_name}/camera_node/image/compressed", CompressedImage, self.image_callback)
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
         self.circle_img_pub = rospy.Publisher(f"/{self.vehicle_name}/circle_img", Image, queue_size=1)
 
         self.white_line_pub = rospy.Publisher(f"/{self.vehicle_name}/white_line_right", String, queue_size=1)
 
-
+        self.draw = True
 
         return
 
@@ -122,90 +130,135 @@ class VehicleDetection(DTROS):
     def manuver_around_bot(self, **kwargs):
         pass
 
-    def image_callback(self, image_msg):
-        """
-        Callback for processing a image which potentially contains a back pattern. Processes the image only if
-        sufficient time has passed since processing the previous image (relative to the chosen processing frequency).
+    #def image_callback(self, image_msg):
+    #    """
+    #    Callback for processing a image which potentially contains a back pattern. Processes the image only if
+    #    sufficient time has passed since processing the previous image (relative to the chosen processing frequency).
 
-        The pattern detection is performed using OpenCV's `findCirclesGrid <https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html?highlight=solvepnp#findcirclesgrid>`_ function.
+    #    The pattern detection is performed using OpenCV's `findCirclesGrid <https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html?highlight=solvepnp#findcirclesgrid>`_ function.
 
-        Args:
-            image_msg (:obj:`sensor_msgs.msg.CompressedImage`): Input image
+    #    Args:
+    #        image_msg (:obj:`sensor_msgs.msg.CompressedImage`): Input image
 
-        """
-        now = rospy.Time.now()
-        if now - self.last_stamp < self.publish_duration:  
-            return
-        else:
-            self.last_stamp = now
-        
+    #    """
+    #    now = rospy.Time.now()
+    #    if now - self.last_stamp < self.publish_duration:  
+    #        return
+    #    else:
+    #        self.last_stamp = now
+    #    
 
-        image_cv = self.bridge.compressed_imgmsg_to_cv2(image_msg)
-        # undistort the image
-        undistorted_image = self.undistort_image(image_cv)
+    #    image_cv = self.bridge.compressed_imgmsg_to_cv2(image_msg)
+    #    # undistort the image
+    #    undistorted_image = self.undistort_image(image_cv)
 
-        # black out top 1/3 of the image
-        undistorted_image[0:160, 0:640] = 0
+    #    # black out top 1/3 of the image
+    #    undistorted_image[0:160, 0:640] = 0
 
-        # crop the image to the center
-        #undistorted_image = undistorted_image[100:400, 100:540]
-        self.img = undistorted_image
-        #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(undistorted_image, encoding="bgr8"))
-
-
-        # grey scale 
-        #undistorted_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)
-        blob_points = self.detect_bot(undistorted_image)  # [(x, y), ...]
-
-        if blob_points is None:
-            #self.bot_error_deque.append(0)  # if no bot detected for a while, this deque will be filled with 0s
-            # if no bot detected for a while, this deque will be filled with some large number 
-            # so any loop that stops based on pixel_distance can still run when theres no bot
-            self.bot_pixel_distance_deque.append(1000)  # size 1 deque
-            return
-        # draw the points on the image
+    #    # crop the image to the center
+    #    #undistorted_image = undistorted_image[100:400, 100:540]
+    #    self.img = undistorted_image
+    #    #self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(undistorted_image, encoding="bgr8"))
 
 
+    #    # grey scale 
+    #    #undistorted_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)
+    #    blob_points = self.detect_bot(undistorted_image)  # [(x, y), ...]
 
-        other_bot_coord = self.get_other_bot_coord(blob_points)
-
-        # undo grayscale
-        #undistorted_image = cv2.cvtColor(undistorted_image, cv2.COLOR_GRAY2BGR)
-
-        for point in blob_points:
-            cv2.circle(self.img, tuple(map(int, point)), 5, (0, 255, 0), -1)
-        
-        # draw the other bot coord
-        #self.put_text(self.img, f"Other bot coord: {other_bot_coord}", (10, 10))
-        # draw verticle line at cam_w / 2 - 100
-        self.draw_vertical_line(self.img, self.cam_w / 2, Color.RED)
-
-        self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
-        # msg 
-        bot_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0] # negative if bot facing left
-        pixel_distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
-        self.bot_pixel_distance_deque.append(pixel_distance)
-        self.bot_error_deque.append(bot_error)
+    #    if blob_points is None:
+    #        #self.bot_error_deque.append(0)  # if no bot detected for a while, this deque will be filled with 0s
+    #        # if no bot detected for a while, this deque will be filled with some large number 
+    #        # so any loop that stops based on pixel_distance can still run when theres no bot
+    #        self.bot_pixel_distance_deque.append(1000)  # size 1 deque
+    #        return
+    #    # draw the points on the image
 
 
-        other_bot_msg = {
-            "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
-            "pixel_distance": self.bot_pixel_distance_deque[0], # the only element of the deque
-            "bot_error": bot_error, # negative if bot facing left
-            "turning_left": self.compute_other_bot_turning_left(), # True if turning left, False if turning right, None if not turning
+
+    #    other_bot_coord = self.get_other_bot_coord(blob_points)
+
+
+
+
+    #    # msg 
+    #    bot_error = (self.cam_w / 2) - self.unprojected_other_bot_coord[0] # negative if bot facing left
+    #    pixel_distance = ((self.cam_h - (self.unprojected_other_bot_coord[1])) / self.cam_h) * 100
+    #    self.bot_pixel_distance_deque.append(pixel_distance)
+    #    self.bot_error_deque.append(bot_error)
+
+
+    #    other_bot_msg = {
+    #        "other_bot_coord": other_bot_coord,  # x, y of the other bot relative to the bot
+    #        "pixel_distance": self.bot_pixel_distance_deque[0], # the only element of the deque
+    #        "bot_error": bot_error, # negative if bot facing left
+    #        "turning_left": self.compute_other_bot_turning_left(), # True if turning left, False if turning right, None if not turning
+    #    }
+    #    #rospy.loginfo(f"Other bot coord: {other_bot_coord}")
+    #    msg = String()
+    #    msg.data = json.dumps(other_bot_msg)
+    #    self.other_bot_info_pub.publish(msg)
+    #    self.other_bot_coord = other_bot_coord
+
+
+    #    if self.draw:
+    #        for point in blob_points:
+    #            cv2.circle(self.img, tuple(map(int, point)), 5, (0, 255, 0), -1)
+    #        
+    #        # draw pixel distance
+    #        self.put_text(self.img, f"Pixel distance: {pixel_distance:.2f}", (10, 20))
+    #        self.circle_img_pub.publish(self.bridge.cv2_to_imgmsg(self.img, encoding="bgr8"))
+
+    #    duration = (rospy.Time.now() - self.last_stamp).to_sec()
+    #    #rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+    #    return
+
+    def duckiebot_callback(self, msg):
+        '''
+        msg = {
+            "duckiebot_mask_area": int,
+            "contours": [(x, y, w, h), ...],
+            "contour_areas": [float, ...]
         }
-        #rospy.loginfo(f"Other bot coord: {other_bot_coord}")
-        msg = String()
-        msg.data = json.dumps(other_bot_msg)
-        self.other_bot_info_pub.publish(msg)
-        self.other_bot_coord = other_bot_coord
+        '''
+        pedestrians_json = msg.data
+        self.duckiebot_area = json.loads(pedestrians_json)["duckiebot_mask_area"]
+        self.bot_error = 20000 - self.duckiebot_area
 
 
+        contours = json.loads(pedestrians_json)["contours"]
+        contour_areas = json.loads(pedestrians_json)["contour_areas"]
 
-        duration = (rospy.Time.now() - self.last_stamp).to_sec()
-        #rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
-        return
+        if len(contours) >0 :
+            # Pair each contour with its area
+            contour_area_pairs = zip(contours, contour_areas)
 
+            # Get the contour with the largest area
+            largest_contour, _ = max(contour_area_pairs, key=lambda pair: pair[1])
+            # Unpack and compute center
+            x, y, w, h = largest_contour
+            center = (x + w / 2, y + h / 2)
+            self.bot_center_x = center[0]
+            error_to_center = self.cam_w / 2 - self.bot_center_x
+            self.bot_error_deque.append(error_to_center)
+            
+            #rospy.loginfo(f"bot center x: {self.bot_center_x}")
+
+            other_bot_msg = {
+                "turning_left": self.compute_other_bot_turning_left(), # True if turning left, False if turning right, None if not turning
+            }
+            #if other_bot_msg['turning_left'] == True:
+            #    rospy.loginfo(f"Bot is turning left")
+            #elif other_bot_msg['turning_left'] == False:
+            #    rospy.loginfo(f"Bot is turning right")
+            #else:
+            #    rospy.loginfo(f"Bot is not turning")
+            #rospy.loginfo(f"Other bot coord: {other_bot_coord}")
+            msg = String()
+            msg.data = json.dumps(other_bot_msg)
+            self.other_bot_info_pub.publish(msg)
+
+        if self.duckiebot_area < 10000:
+            self.bot_error = None
 
     """
     
