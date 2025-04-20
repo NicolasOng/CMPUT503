@@ -11,6 +11,7 @@ from Color import Color
 import cv2
 from cv_bridge import CvBridge
 import dt_apriltags
+from collections import deque
 
 NO_TAG_ID = "-1"
 
@@ -160,6 +161,11 @@ class CameraDetectionNode(DTROS):
         ], np.int32)
         self.bottom_mask = np.zeros((self.cam_h, self.cam_w), dtype=np.uint8)
         cv2.fillPoly(self.bottom_mask, [self.polygon_points_bottom], 255)
+
+        # bot detection
+        self.bot_error_deque = deque(maxlen=3)
+        self.bot_error_deque.append(0)
+        self.self.bot_turning_threshold = 100
     
     def white_line_loc_cb(self, msg):
         m_json = msg.data
@@ -567,6 +573,7 @@ class CameraDetectionNode(DTROS):
         # mask out bottom part of the image (to ignore the pedestrian lines)
         color_mask = cv2.bitwise_and(color_mask, self.bottom_mask)
 
+        # get the contours
         big_contours = []
         big_contour_areas = []
         contours, _ = cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -576,13 +583,35 @@ class CameraDetectionNode(DTROS):
                 x, y, w, h = cv2.boundingRect(contour)
                 big_contours.append((x, y, w, h))
                 big_contour_areas.append(area)
+        
+        # check if the Duckiebot is to the left or right of the bot.
+        if len(big_contours) > 0:
+            # Pair each contour with its area
+            contour_area_pairs = zip(big_contours, big_contour_areas)
+            # Get the contour with the largest area
+            largest_contour, _ = max(contour_area_pairs, key=lambda pair: pair[1])
+            # Unpack and compute center
+            x, y, w, h = largest_contour
+            center = (x + w / 2, y + h / 2)
+            self.bot_center_x = center[0]
+            error_to_center = self.cam_w / 2 - self.bot_center_x
+            self.bot_error_deque.append(error_to_center)
+        turning_left = None
+        error_mean = np.mean(self.bot_error_deque)
+        if error_mean > 0 and abs(error_mean) > self.bot_turning_threshold:
+            # bot is turning left
+            turning_left = True
+        elif error_mean < 0 and abs(error_mean) > self.bot_turning_threshold:
+            # bot is turning right
+            turning_left = False
 
         # Get the number of white pixels (value = 255)
         mask_area = cv2.countNonZero(color_mask)
         msg = {
             "duckiebot_mask_area": mask_area,
             "contours": big_contours,
-            "contour_areas": big_contour_areas
+            "contour_areas": big_contour_areas,
+            "bot_turning_left": turning_left
         }
         self.duckiebot_pub.publish(json.dumps(msg))
         #rospy.loginfo(f"MASK SIZE: {mask_area}")

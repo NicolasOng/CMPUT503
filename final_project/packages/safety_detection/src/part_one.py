@@ -41,11 +41,30 @@ class PartOne(DTROS):
         # duckiebot detection
         self.duckiebot_area = 0
         self.bot_error = 0
+        self.bot_turning_left = None
         self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
+
+        # led commands
+        self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
+        red = ColorRGBA(r=255, g=0, b=0, a=255)
+        white = ColorRGBA(r=255, g=255, b=255, a=255)
+        green = ColorRGBA(r=0, g=255, b=0, a=255)
+        #blue = ColorRGBA(r=0, g=0, b=255, a=255)
+        default_list = [white, red, white, red, white]
+        #all_red_list = [red] * 5
+        all_green_list = [green] * 5
+        #all_blue_list = [blue] * 5
+        #all_white_list = [white] * 5
+        #self.all_red = LEDPattern(rgb_vals=all_red_list)
+        self.all_green = LEDPattern(rgb_vals=all_green_list)
+        #self.all_blue = LEDPattern(rgb_vals=all_blue_list)
+        #self.all_white = LEDPattern(rgb_vals=all_white_list)
+        self.default = LEDPattern(rgb_vals=default_list)
+        self.current_led = "defualt"
 
         # part one stuff
         self.red_stop = 0
-        # TODO: fine-tune these distance/rotational velocity pairs
+        # path one = turn right, path two = turn left
         self.path_one = [(0.60, math.pi * 0.27), (0.60, math.pi * 0.27), (0.60, math.pi * 0.27)]
         self.path_two = [(0.60, math.pi * 0.27), (0.60, math.pi * 0.27), (0.60, math.pi * 0.27)]
         self.path = self.path_one
@@ -104,18 +123,25 @@ class PartOne(DTROS):
         msg = {
             "duckiebot_mask_area": int,
             "contours": [(x, y, w, h), ...],
-            "contour_areas": [float, ...]
+            "contour_areas": [float, ...],
+            "bot_turning_left": Bool
         }
         '''
         pedestrians_json = msg.data
-        self.duckiebot_area = json.loads(pedestrians_json)["duckiebot_mask_area"]
+        pedestrians_data = json.loads(pedestrians_json)
+        self.duckiebot_area = pedestrians_data["duckiebot_mask_area"]
         self.bot_error = 20000 - self.duckiebot_area
-        if self.duckiebot_area < 10000:
+        if self.duckiebot_area < 5000:
             self.bot_error = None
+        self.bot_turning_left = pedestrians_data["bot_turning_left"]
         
     def set_leds(self):
-        # TODO: set LED if the bot goes from detected to not, or vice versa
-        pass
+        if self.current_led == "defualt" and self.bot_error is not None:
+            self.current_led = "all green"
+            self.led_command.publish(self.all_green)
+        elif self.current_led == "all green" and self.bot_error is None:
+            self.current_led = "defualt"
+            self.led_command.publish(self.default)
     
     def set_velocities(self, linear, rotational):
         '''
@@ -164,10 +190,12 @@ class PartOne(DTROS):
                 rospy.sleep(1)
                 # set the path is this is the first stop
                 if self.red_stop == 0:
-                    # TODO: detect if the bot goes left or right
-                    left = True
+                    # detect if the bot goes left or right
+                    while self.duckiebot_area > 5000:
+                        rospy.loginfo(f'Still see the duckiebot, stopping.')
+                        left = self.bot_turning_left
                     # set the path the bot will execute based on this.
-                    self.path = self.path_one if left else self.path_two
+                    self.path = self.path_one if not left else self.path_two
                 # do the turn
                 dist, rot_v = self.path[self.red_stop] 
                 self.drive_arc(dist, rot_v)
