@@ -27,6 +27,15 @@ bot_following_pid = {
     "integral": 0
 }
 
+# PID values for parking
+parking_pid = { 
+    "kp": -0.025,
+    "ki": 0,
+    "kd": 0,
+    "previous_error": 0,
+    "integral": 0
+}
+
 def pid_controller(pid, error, dt, reset=False):
     '''
     The method to get PID controls.

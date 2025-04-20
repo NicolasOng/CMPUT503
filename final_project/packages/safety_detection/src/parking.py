@@ -16,7 +16,7 @@ from std_msgs.msg import ColorRGBA, String
 
 from camera_detection import CameraDetectionNode
 from Color import Color
-from pid_controller import simple_pid, pid_controller_v_omega
+from pid_controller import parking_pid, pid_controller_v_omega
 from safety_detection.srv import SetString, SetStringResponse
 
 class Parking(DTROS):
@@ -34,14 +34,18 @@ class Parking(DTROS):
         self.ctheta = 0
         self.cpos = 0
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/odometry", String, self.odometry_callback)
-        
+
+        # vehicle control
+        self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
+
         # tag detection
         self.draw_atag_toggle = True
         self.is_ToI = False
         self.ToI_area = 0
-        self.parking_tag = 228
+        self.ToI_error = 0
+        self.parking_tag = 44
         self.at_detector = dt_apriltags.Detector()
-        self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image", Image, queue_size=1)
+        self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
 
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([
@@ -142,29 +146,38 @@ class Parking(DTROS):
 
 
     # Draws a bounding box and ID on an ApriltTag 
-    def draw_atag_features(self, image, points, id, center, colour=(255, 100, 255)):
+    def draw_atag_features(self, image, points, id, center, error, colour=(255, 100, 255)):
         h, w = image.shape[:2]
-        tag_offset_error = str(center[0] - w//2)
         img = cv2.polylines(image, [points], True, colour, 5)
-        img = cv2.putText(image, tag_offset_error, self.tag_center, cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,100,255), 1)
-        img = cv2.line(image, (w//2, h//2), center, (255,100,255), 2)
+        img = cv2.putText(image, error, tuple(self.tag_center), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,100,255), 1)
+        img = cv2.line(image, (w//2, h//2), tuple(center), (255,100,255), 2)
+        
+        # Image center
+        img = cv2.line(image, (w//2, 0), (w//2, h), (0,255,0), 2)
+        img = cv2.circle(image, (w//2, h//2), 3, (0,255,0), 3)
+
         #img = cv2.putText(image, id, (center[0], center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 2)
         return img
     
 
     def perform_tag_detection(self, clean_image, draw_image):
-        # Convert image to grayscale
+        # Preprocess image
         image_grey = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
         image_grey = cv2.GaussianBlur(image_grey, (5,5), 0)
-
+        
+        #image_grey = cv2.resize(image_grey, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
+        #draw_image = cv2.resize(draw_image, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
+        
         # ApriltTag detector
         results = self.at_detector.detect(image_grey)
 
         ToI_index = -1
         self.is_ToI = False
         self.ToI_area = 0
+        self.ToI_error = 0
 
         if len(results) == 0:
+            self.tag_image_sub.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
             return draw_image
         else:
             for idx, r in enumerate(results):
@@ -181,15 +194,17 @@ class Parking(DTROS):
 
             self.tag_center = ToI_center
             
-            # WEBCAM IMAGE COORDINATES: TOP LEFT is 0,0
-            # DUCKIEBOT CAMERA COORDINATES ARE REVERSED: BOTTOM LEFT is 0,0
-            tl = ToI.corners[0].astype(int)
-            br = ToI.corners[2].astype(int)
+            br = ToI.corners[1].astype(int) # br is w,h
+            tl = ToI.corners[3].astype(int) # tl is 0,0
             ToI_area = (br[0] - tl[0]) * (br[1] - tl[1])
             self.ToI_area = ToI_area
+
+            _, w = draw_image.shape[:2]
+            ToI_offset_error = ToI_center[0] - w//2
+            self.ToI_error = ToI_offset_error
             
             if self.draw_atag_toggle:
-                draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center)
+                draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
 
         self.tag_image_sub.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
 
@@ -200,23 +215,21 @@ class Parking(DTROS):
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
-
             clean_image = self.camera_image.copy()
             # undistort camera image
             clean_image = self.undistort_image(clean_image)
-            h, w = clean_image.shape[:2]
 
             draw_image = clean_image.copy()
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
-            if self.ToI_area > 115000:
-                print("Area threshold reached")
+            print(self.ToI_error)
+            v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
+            self.set_velocities(v, omega)
 
-            # Center line of image
-            #draw_image = cv2.line(draw_image, (w//2, 0), (w//2, h), (0,255,0), 2)
-            #draw_image = cv2.circle(draw_image, (w//2, h//2), 3, (0,255,0), 3)
-
-
+            if self.ToI_area > 42500:
+                print("Area threshold reached: ", self.ToI_area)
+                self.set_velocities(0, 0)
+                break
 
             '''
             start_time = rospy.Time.now()
