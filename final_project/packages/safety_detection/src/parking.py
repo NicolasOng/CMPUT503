@@ -41,14 +41,14 @@ class Parking(DTROS):
         # tag detection
         self.draw_atag_toggle = True
         self.is_ToI = False
-        self.ToI_area = 0
-        self.ToI_error = 0
+        self.ToI_area = -1
         self.parking_tag = 47
         self.at_detector = dt_apriltags.Detector()
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
 
         # course control
         self.is_start = True
+        self.lost_tag = False
 
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([
@@ -159,24 +159,29 @@ class Parking(DTROS):
         while not rospy.is_shutdown():
             self.set_velocities(speed, 0)
             cur_meters = self.cpos - starting_cpos
-            print(self.cpos)
+            print("Distance travelled: ", cur_meters)
             if cur_meters >= distance:
+                print("stopping")
                 break
             rate.sleep()
         self.set_velocities(0, 0)
 
 
     # Draws a bounding box and ID on an ApriltTag 
-    def draw_atag_features(self, image, points, id, center, error, colour=(255, 100, 255)):
+    def draw_atag_features(self, image, points, id, center, error, correction=0, colour=(255, 100, 255)):
         h, w = image.shape[:2]
         img = cv2.polylines(image, [points], True, colour, 5)
-        img = cv2.putText(image, error, tuple(self.tag_center), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255,100,255), 1)
-        img = cv2.line(image, (w//2, h//2), tuple(center), (255,100,255), 2)
+        img = cv2.putText(image, error, tuple(center), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 1)
+        img = cv2.line(image, ((w//2)+correction, (h//2)), tuple(center), colour, 2)
         
         # Image center
-        img = cv2.line(image, (w//2, 0), (w//2, h), (0,255,0), 2)
-        img = cv2.circle(image, (w//2, h//2), 3, (0,255,0), 3)
+        img = cv2.line(image, (w//2, 0), (w//2, h), (255, 100, 255), 2)
+        img = cv2.circle(image, (w//2, h//2), 3, (255, 100, 255), 3)
 
+        # Rotation correction center
+        img = cv2.line(image, (((w//2)-65), 0), (((w//2)-65), h), (200,45,200), 2)
+        img = cv2.circle(image, ((w//2)-65, (h//2)), 3, (200,45,200), 3)
+    
         #img = cv2.putText(image, id, (center[0], center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 2)
         return img
     
@@ -184,18 +189,18 @@ class Parking(DTROS):
     def perform_tag_detection(self, clean_image, draw_image):
         # Preprocess image
         image_grey = cv2.cvtColor(clean_image, cv2.COLOR_BGR2GRAY)
-        image_grey = cv2.GaussianBlur(image_grey, (5,5), 0)
-        
-        #image_grey = cv2.resize(image_grey, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
-        #draw_image = cv2.resize(draw_image, None, fx=0.7, fy=0.7, interpolation=cv2.INTER_LINEAR)
+        #image_grey = cv2.GaussianBlur(image_grey, (5,5), 0)
         
         # ApriltTag detector
         results = self.at_detector.detect(image_grey)
 
         ToI_index = -1
         self.is_ToI = False
-        self.ToI_area = 0
+        #self.ToI_area = 0
         self.ToI_error = 0
+        self.alignment_error = 0
+
+        other_tag_idx = -1
 
         if len(results) == 0:
             self.tag_image_sub.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
@@ -205,6 +210,8 @@ class Parking(DTROS):
                 if r.tag_id == self.parking_tag:
                     ToI_index = idx
                     self.is_ToI = True
+                else:
+                    other_tag_idx = idx
 
         if ToI_index != -1:
             ToI = results[ToI_index]
@@ -214,7 +221,7 @@ class Parking(DTROS):
             ToI_id = str(ToI.tag_id)
 
             self.tag_center = ToI_center
-            
+
             br = ToI.corners[1].astype(int) # br is w,h
             tl = ToI.corners[3].astype(int) # tl is 0,0
             ToI_area = (br[0] - tl[0]) * (br[1] - tl[1])
@@ -223,9 +230,22 @@ class Parking(DTROS):
             _, w = draw_image.shape[:2]
             ToI_offset_error = ToI_center[0] - w//2
             self.ToI_error = ToI_offset_error
+
+            draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
+
+        if other_tag_idx !=-1:
+            tag = results[other_tag_idx]
+
+            tag_center = tag.center.astype(int)
+            tag_corners = np.array(tag.corners, np.int32)
+            tag_corners = tag_corners.reshape((-1, 1, 2))
+            tag_id = str(tag.tag_id)
+
+            _, w = draw_image.shape[:2]
+            tag_offset_error = tag_center[0] - (w//2)-65
+            self.alignment_error = tag_offset_error
             
-            if self.draw_atag_toggle:
-                draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
+            draw_image = self.draw_atag_features(draw_image, tag_corners, tag_id, tag_center, str(tag_offset_error), correction=-65, colour=(170,15,170))
 
         self.tag_image_sub.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
 
@@ -240,36 +260,70 @@ class Parking(DTROS):
             # undistort camera image
             clean_image = self.undistort_image(clean_image)
             draw_image = clean_image.copy()
-
+            draw_image = self.perform_tag_detection(clean_image, draw_image)
 
             if self.is_start:
                 if self.parking_tag == 47 or self.parking_tag == 58:
-                    self.drive_straight(0.5)
+                    self.drive_straight(0.4)
                 elif self.parking_tag == 13 or self.parking_tag == 44:
-                    self.drive_straight(0.25)
+                    self.drive_straight(0.225)
                 else:
                     rospy.log(f"[PARKING.PY] Invalid Parking Tag")
+                self.pause(0.5)
+
                 if self.parking_tag == 13 or self.parking_tag == 47:
-                    self.rotate(math.pi/2 * 0.5, math.pi * 2)
+                    print("ROTATING LEFT")
+                    self.rotate(math.pi/2 * 0.45, math.pi * 5)
                 elif self.parking_tag == 44 or self.parking_tag == 58:
-                        self.rotate(-(math.pi/2 * 0.5), math.pi * 2)
+                    self.rotate(math.pi/2 * 0.45, math.pi * -5)
                 else:
                     rospy.log(f"[PARKING.PY] Invalid Parking Tag")
+                self.pause(0.5)
                 self.is_start = False
 
-
-            draw_image = self.perform_tag_detection(clean_image, draw_image)
-
-            print(self.ToI_error)
+            """
+            count = 0
+            while not self.found_ToI:
+                draw_image = self.perform_tag_detection(clean_image, draw_image)
+                self.set_velocities(0, math.pi * -2)
+                if count % 5 == 0:
+                    self.pause(0.5)
+                count += 1
+            """
+            '''
             v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
-            self.set_velocities(v, omega)
+            self.set_velocities(-v, omega)
 
-            if self.ToI_area > 42500:
+            v, omega = pid_controller_v_omega(self.alignment_error, parking_pid, rate_int, False)
+            self.set_velocities(-v, omega)
+            '''
+
+            if -1 < self.ToI_area and self.ToI_area < 150:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 break
 
+            """
+            if self.ToI_area > 40000:
+                print("Area threshold reached: ", self.ToI_area)
+                self.set_velocities(0, 0)
+                break
 
+            
+            if np.abs(self.ToI_error) > 50:
+                self.rotate(0.1, -0.5)
+                self.pause(0.5)
+
+            if np.abs(self.ToI_error) < 50:
+                print("ALIGNED")
+                self.set_velocities(0, 0)
+                break
+            
+            if self.ToI_area > 40000:
+                print("Area threshold reached: ", self.ToI_area)
+                self.set_velocities(0, 0)
+                break
+            """
             #*****************************************
             # TODO
             # Use assigned parking spot to determine
@@ -295,7 +349,6 @@ class Parking(DTROS):
             rospy.loginfo(f"Loop duration: {dt:.6f} seconds")
             rospy.loginfo(f"---")
             '''
-
 
     def on_shutdown(self):
         # on shutdown,
