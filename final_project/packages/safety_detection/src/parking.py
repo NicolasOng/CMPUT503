@@ -47,6 +47,9 @@ class Parking(DTROS):
         self.at_detector = dt_apriltags.Detector()
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
 
+        # course control
+        self.is_start = True
+
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([
             [319.2461317458548, 0.0, 307.91668484581703],
@@ -128,7 +131,7 @@ class Parking(DTROS):
             rate.sleep()
 
 
-    def rotate(self, radians, speed):
+    def rotate(self, radians, speed=0.23):
         '''
         radians should be positive.
         speed can be positive for clockwise,
@@ -140,6 +143,23 @@ class Parking(DTROS):
             self.set_velocities(0, speed)
             cur_radians = self.ctheta - starting_ctheta
             if cur_radians >= radians:
+                break
+            rate.sleep()
+        self.set_velocities(0, 0)
+
+
+    def drive_straight(self, distance, speed=0.23):
+        '''
+        0 is straight
+        distance should be positive
+        speed should be in [-1, 1]
+        '''
+        starting_cpos = self.cpos
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.set_velocities(speed, 0)
+            cur_meters = self.cpos - starting_cpos
+            if cur_meters >= distance:
                 break
             rate.sleep()
         self.set_velocities(0, 0)
@@ -218,8 +238,25 @@ class Parking(DTROS):
             clean_image = self.camera_image.copy()
             # undistort camera image
             clean_image = self.undistort_image(clean_image)
-
             draw_image = clean_image.copy()
+
+
+            if self.is_start:
+                if self.parking_tag == 47 or self.parking_tag == 58:
+                    self.drive_straight(20)
+                elif self.parking_tag == 13 or self.parking_tag == 44:
+                    self.drive_straight(10)
+                else:
+                    rospy.log(f"[PARKING.PY] Invalid Parking Tag")
+                if self.parking_tag == 13 or self.parking_tag == 47:
+                    self.rotate(math.pi/2 * 0.5, math.pi * 2)
+                elif self.parking_tag == 44 or self.parking_tag == 58:
+                        self.rotate(-(math.pi/2 * 0.5), math.pi * 2)
+                else:
+                    rospy.log(f"[PARKING.PY] Invalid Parking Tag")
+                self.is_start = False
+                
+
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
             print(self.ToI_error)
