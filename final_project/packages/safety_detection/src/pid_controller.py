@@ -11,7 +11,7 @@ simple_pid = {
 
 # PID controller variables for yellow and white lines following
 yellow_white_pid = {
-    "kp": -0.023, #-0.025
+    "kp": -0.025, #-0.025
     "ki": 0,
     "kd": -0.001, #-0.0125
     "previous_error": 0,
@@ -21,6 +21,15 @@ yellow_white_pid = {
 # bot pid values
 bot_following_pid = {
     "kp": 0.000023, #[0.00001, 0.000025]
+    "ki": 0,
+    "kd": 0,
+    "previous_error": 0,
+    "integral": 0
+}
+
+# PID values for parking
+parking_pid = { 
+    "kp": -0.025,
     "ki": 0,
     "kd": 0,
     "previous_error": 0,
@@ -59,7 +68,7 @@ def pid_controller_v_omega(error, pid_values, rate, reset=False):
     if error is None:
         return 0, 0
     else:
-        return 0.23, omega
+        return 0.24, omega
 
 def bot_and_lane_controller(lane_error, bot_error, lane_pid, bot_pid, rate, reset=False):
     dt = 1 / rate
