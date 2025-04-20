@@ -29,9 +29,9 @@ bot_following_pid = {
 
 # PID values for parking
 parking_pid = { 
-    "kp": -0.035,
+    "kp": -0.05,
     "ki": 0,
-    "kd": 0,
+    "kd": -0.01,
     "previous_error": 0,
     "integral": 0
 }
