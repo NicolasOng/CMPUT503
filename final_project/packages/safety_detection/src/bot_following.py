@@ -15,7 +15,7 @@ from camera_detection import CameraDetectionNode
 import threading
 import math
 
-from pid_controller import simple_pid, yellow_white_pid, bot_following_pid, bot_and_lane_controller
+from pid_controller import simple_pid, yellow_white_pid, bot_following_pid, bot_and_lane_controller, arc_pid, arc_controller
 
 class BotFollowing(DTROS):
     def __init__(self, node_name):
@@ -27,6 +27,7 @@ class BotFollowing(DTROS):
         self.cpos = 0
         self.xpos = 0
         self.ypos = 0
+        self.theta = 0
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/odometry", String, self.odometry_callback)
 
         # lane following
@@ -59,6 +60,7 @@ class BotFollowing(DTROS):
         self.cpos = odometry_data["cpos"]
         self.xpos = odometry_data["xpos"]
         self.ypos = odometry_data["ypos"]
+        self.theta = odometry_data["theta"]
 
     def lane_error_callback(self, msg):
         '''
@@ -141,6 +143,49 @@ class BotFollowing(DTROS):
             rate.sleep()
         self.set_velocities(0, 0)
     
+    def odometry_arc(self, distance, radius, speed=0.23):
+        '''
+        This method uses the odometry + controller to make the bot follow a circle
+        With a large enough circle, the bot can use this function to follow a straight line.
+        distance: How far along the circle to travel (always positive)
+        radius: the radius of the circle (its sign determines if the bot turns left or right)
+        speed: how fast along the circle the bot moves
+        '''
+        # get the rotational velocity:
+        rotational_velocity = -(speed / radius)
+        # get the center of the circle to the side of the bot
+        # this depends on the bot's current orientation
+        center_x = radius * math.cos(self.theta + math.pi / 2)
+        center_y = radius * math.sin(self.theta + math.pi / 2)
+        print(f"circle center: {center_x:.2f}, {center_y:.2f}")
+        # get the radius's sign and make it positive
+        radius_sign = -1 if radius < 0 else 1
+        radius = abs(radius)
+        # get the current position of the bot
+        start_x, start_y = self.xpos, self.ypos
+        start_cpos = self.cpos
+        rate_int = 10
+        rate = rospy.Rate(rate_int)
+        while not rospy.is_shutdown():
+            # get the bot's current position relative to its start
+            cur_x, cur_y = self.xpos - start_x, self.ypos - start_y
+            cur_cpos = self.cpos - start_cpos
+            # get the bot's distance from the circle's center
+            bot_distance = math.hypot(cur_x - center_x, cur_y - center_y)
+            # get the error term (bot distance - radius)
+            arc_error = bot_distance - radius
+            arc_error = arc_error / (1 + arc_error)
+            # put this error term in the controller
+            omega = arc_controller(arc_error, arc_pid, rate_int, False)
+            print(f"pos_x: {cur_x:.4f}, pos_y: {cur_y:.4f}, error: {arc_error:.4f}, omega: {radius_sign * omega:.4f}")
+            # set the velocities
+            # the bot needs to turn differently based on if the circle was made to the left or right of it
+            self.set_velocities(speed, rotational_velocity + (radius_sign * omega))
+            if cur_cpos >= distance:
+                break
+            rate.sleep()
+        self.set_velocities(0, 0)
+    
     def bot_following(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
@@ -180,5 +225,6 @@ class BotFollowing(DTROS):
 if __name__ == '__main__':
     node = BotFollowing(node_name='botfollowing')
     rospy.sleep(2)
-    node.bot_following()
+    #node.bot_following()
+    node.odometry_arc(10, 0.5)
     rospy.spin()
