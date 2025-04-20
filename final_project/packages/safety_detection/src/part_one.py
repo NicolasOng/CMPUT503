@@ -17,17 +17,14 @@ import math
 
 from pid_controller import simple_pid, yellow_white_pid, bot_following_pid, bot_and_lane_controller, arc_pid, arc_controller
 
-class BotFollowing(DTROS):
+class PartOne(DTROS):
     def __init__(self, node_name):
-        super(BotFollowing, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
+        super(PartOne, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
         # odometry topic
         self.ctheta = 0
         self.cpos = 0
-        self.xpos = 0
-        self.ypos = 0
-        self.theta = 0
         self.lane_error_topic = rospy.Subscriber(f"/{self.vehicle_name}/odometry", String, self.odometry_callback)
 
         # lane following
@@ -37,7 +34,6 @@ class BotFollowing(DTROS):
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # ground color detection
-        self.closest_blue = float('inf')
         self.closest_red = float('inf')
         self.red_cooldown = 0
         self.color_coords_topic = rospy.Subscriber(f"/{self.vehicle_name}/color_coords", String, self.color_coords_callback)
@@ -46,6 +42,13 @@ class BotFollowing(DTROS):
         self.duckiebot_area = 0
         self.bot_error = 0
         self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
+
+        # part one stuff
+        self.red_stop = 0
+        # TODO: fine-tune these distance/rotational velocity pairs
+        self.path_one = [(0.60, math.pi * 0.27), (0.60, math.pi * 0.27), (0.60, math.pi * 0.27)]
+        self.path_two = [(0.60, math.pi * 0.27), (0.60, math.pi * 0.27), (0.60, math.pi * 0.27)]
+        self.path = self.path_one
 
     def odometry_callback(self, msg):
         '''
@@ -58,9 +61,6 @@ class BotFollowing(DTROS):
         odometry_data = json.loads(msg.data)
         self.ctheta = odometry_data["ctheta"]
         self.cpos = odometry_data["cpos"]
-        self.xpos = odometry_data["xpos"]
-        self.ypos = odometry_data["ypos"]
-        self.theta = odometry_data["theta"]
 
     def lane_error_callback(self, msg):
         '''
@@ -71,14 +71,11 @@ class BotFollowing(DTROS):
         le_json = msg.data
         yellow_lane_error = json.loads(le_json)["yellow_lane_error"]
         white_lane_error = json.loads(le_json)["white_lane_error"]
+
+        # set lane error and lane pid values to the yellow ones
         self.lane_error = yellow_lane_error
         self.lane_pid_values = yellow_white_pid
-        # self.lane_error = white_lane_error
-        # self.lane_pid_values = simple_pid
-
-        # if white_lane_error is None:
-        #     self.lane_error = yellow_lane_error
-        #     self.lane_pid_values = yellow_white_pid
+        # unless yellow is None
         if yellow_lane_error is None:
             self.lane_error = white_lane_error
             self.lane_pid_values = simple_pid
@@ -99,8 +96,6 @@ class BotFollowing(DTROS):
         '''
         # get the color coords
         color_coords = json.loads(msg.data)
-        # get the closest blue color
-        self.closest_blue = min(color_coords["blue"], key=lambda item: item['center'][1])['center'][1] if color_coords["blue"] else float('inf')
         # get the closest red color
         self.closest_red = min(color_coords["red"], key=lambda item: item['center'][1])['center'][1] if color_coords["red"] else float('inf')
 
@@ -117,6 +112,10 @@ class BotFollowing(DTROS):
         self.bot_error = 20000 - self.duckiebot_area
         if self.duckiebot_area < 10000:
             self.bot_error = None
+        
+    def set_leds(self):
+        # TODO: set LED if the bot goes from detected to not, or vice versa
+        pass
     
     def set_velocities(self, linear, rotational):
         '''
@@ -143,49 +142,6 @@ class BotFollowing(DTROS):
             rate.sleep()
         self.set_velocities(0, 0)
     
-    def odometry_arc(self, distance, radius, speed=0.23):
-        '''
-        This method uses the odometry + controller to make the bot follow a circle
-        With a large enough circle, the bot can use this function to follow a straight line.
-        distance: How far along the circle to travel (always positive)
-        radius: the radius of the circle (its sign determines if the bot turns left or right)
-        speed: how fast along the circle the bot moves
-        '''
-        # get the rotational velocity:
-        rotational_velocity = -(speed / radius)
-        # get the center of the circle to the side of the bot
-        # this depends on the bot's current orientation
-        center_x = radius * math.cos(self.theta + math.pi / 2)
-        center_y = radius * math.sin(self.theta + math.pi / 2)
-        print(f"circle center: {center_x:.2f}, {center_y:.2f}")
-        # get the radius's sign and make it positive
-        radius_sign = -1 if radius < 0 else 1
-        radius = abs(radius)
-        # get the current position of the bot
-        start_x, start_y = self.xpos, self.ypos
-        start_cpos = self.cpos
-        rate_int = 10
-        rate = rospy.Rate(rate_int)
-        while not rospy.is_shutdown():
-            # get the bot's current position relative to its start
-            cur_x, cur_y = self.xpos - start_x, self.ypos - start_y
-            cur_cpos = self.cpos - start_cpos
-            # get the bot's distance from the circle's center
-            bot_distance = math.hypot(cur_x - center_x, cur_y - center_y)
-            # get the error term (bot distance - radius)
-            arc_error = bot_distance - radius
-            arc_error = arc_error / (1 + arc_error)
-            # put this error term in the controller
-            omega = arc_controller(arc_error, arc_pid, rate_int, False)
-            print(f"pos_x: {cur_x:.4f}, pos_y: {cur_y:.4f}, error: {arc_error:.4f}, omega: {radius_sign * omega:.4f}")
-            # set the velocities
-            # the bot needs to turn differently based on if the circle was made to the left or right of it
-            self.set_velocities(speed, rotational_velocity + (radius_sign * omega))
-            if cur_cpos >= distance:
-                break
-            rate.sleep()
-        self.set_velocities(0, 0)
-    
     def bot_following(self):
         rate_int = 10
         rate = rospy.Rate(rate_int)
@@ -194,21 +150,28 @@ class BotFollowing(DTROS):
             # do the bot and lane following
             v, omega = bot_and_lane_controller(self.lane_error, self.bot_error, self.lane_pid_values, bot_following_pid, rate_int, False)
             self.set_velocities(v, omega)
+            self.set_leds()
             #rospy.loginfo(f'lane_error: {self.lane_error}, bot error: {self.bot_error}, v: {v}, omega: {omega}')
             rospy.loginfo(f'closest red: {self.closest_red}, red cooldown: {self.red_cooldown}')
             rospy.loginfo(f'xpos: {self.xpos}, ypos: {self.ypos}')
             # if the bot is at a red tape,
             if self.closest_red < 135 and self.red_cooldown == 0:
-                rospy.loginfo(f'detected red line, stopping.')
-                self.red_cooldown = 5
+                self.red_cooldown = 10
+                rospy.loginfo(f'stopping at red line #{self.red_stop}.')
                 # stop the bot
                 self.set_velocities(0, 0)
                 # wait for 1s,
                 rospy.sleep(1)
-                # do a left turn
-                # 0.2 is good for the top one
-                self.drive_arc(0.60, math.pi * 0.27)
-                # break
+                # set the path is this is the first stop
+                if self.red_stop == 0:
+                    # TODO: detect if the bot goes left or right
+                    left = True
+                    # set the path the bot will execute based on this.
+                    self.path = self.path_one if left else self.path_two
+                # do the turn
+                dist, rot_v = self.path[self.red_stop] 
+                self.drive_arc(dist, rot_v)
+                self.red_stop += 1
             rate.sleep()
             # update the cooldowns
             end_time = rospy.Time.now()
@@ -223,8 +186,7 @@ class BotFollowing(DTROS):
         self.set_velocities(0, 0)
 
 if __name__ == '__main__':
-    node = BotFollowing(node_name='botfollowing')
+    node = PartOne(node_name='partone')
     rospy.sleep(2)
-    #node.bot_following()
-    node.odometry_arc(10, 0.5)
+    node.bot_following()
     rospy.spin()

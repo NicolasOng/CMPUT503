@@ -91,3 +91,25 @@ def bot_and_lane_controller(lane_error, bot_error, lane_pid, bot_pid, rate, rese
 
     # return the calculated v and omega
     return v, omega
+
+# arc pid values
+arc_pid = {
+    "kp": -50, #[30, 100]
+    "ki": 0,
+    "kd": 0,
+    "previous_error": 0,
+    "integral": 0
+}
+
+def arc_controller(arc_error, arc_pid, rate, reset=False):
+    dt = 1 / rate
+    # feed the error into the pid function to get the amount to turn the bot
+    # also do clamping
+    omega = 0
+    if arc_error is not None:
+        omega = pid_controller(arc_pid, arc_error, dt, reset=reset)
+        clamp_value = (math.pi) * 5
+        omega = max(-clamp_value, min(omega, clamp_value))
+
+    # return the calculated omega
+    return omega
