@@ -159,7 +159,7 @@ class Parking(DTROS):
         while not rospy.is_shutdown():
             self.set_velocities(speed, 0)
             cur_meters = self.cpos - starting_cpos
-            print(cur_meters)
+            print(self.cpos)
             if cur_meters >= distance:
                 break
             rate.sleep()
