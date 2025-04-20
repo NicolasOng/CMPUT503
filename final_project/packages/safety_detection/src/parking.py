@@ -243,9 +243,9 @@ class Parking(DTROS):
 
             if self.is_start:
                 if self.parking_tag == 47 or self.parking_tag == 58:
-                    self.drive_straight(20)
+                    self.drive_straight(0.5)
                 elif self.parking_tag == 13 or self.parking_tag == 44:
-                    self.drive_straight(10)
+                    self.drive_straight(0.25)
                 else:
                     rospy.log(f"[PARKING.PY] Invalid Parking Tag")
                 if self.parking_tag == 13 or self.parking_tag == 47:
@@ -255,7 +255,7 @@ class Parking(DTROS):
                 else:
                     rospy.log(f"[PARKING.PY] Invalid Parking Tag")
                 self.is_start = False
-                
+
 
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
