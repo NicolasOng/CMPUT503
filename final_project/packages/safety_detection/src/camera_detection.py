@@ -165,7 +165,7 @@ class CameraDetectionNode(DTROS):
         # bot detection
         self.bot_error_deque = deque(maxlen=3)
         self.bot_error_deque.append(0)
-        self.self.bot_turning_threshold = 100
+        self.bot_turning_threshold = 100
     
     def white_line_loc_cb(self, msg):
         m_json = msg.data
@@ -645,7 +645,7 @@ class CameraDetectionNode(DTROS):
             # peform colored tape detection
             draw_image = self.perform_ground_color_detection(clean_image.copy(), draw_image)
             # perform apriltags detection
-            #draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
+            draw_image = self.perform_tag_detection(clean_image.copy(), draw_image)
 
             # perform duckie detection
             draw_image = self.perform_duckie_detection(clean_image.copy(), draw_image)
