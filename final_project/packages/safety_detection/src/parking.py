@@ -231,6 +231,18 @@ class Parking(DTROS):
                 self.set_velocities(0, 0)
                 break
 
+
+            #*****************************************
+            # TODO
+            # Use assigned parking spot to determine
+            #   - How far forward to move (try to roughly align with parking stall)
+            #   - Which direction to rotate 90 degrees
+            # Use hard coded 90deg rotations and travel straight. 
+            # After executing hardcoded maneuver, use tag-following to complete parking
+            # TUNE PID CONTROLLER FURTHER
+            # EXPERIMENT WITH REVERSE PARKING?
+            #*****************************************
+
             '''
             start_time = rospy.Time.now()
 
