@@ -43,7 +43,7 @@ class Parking(DTROS):
         self.is_ToI = False
         self.ToI_area = 0
         self.ToI_error = 0
-        self.parking_tag = 44
+        self.parking_tag = 47
         self.at_detector = dt_apriltags.Detector()
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
 
