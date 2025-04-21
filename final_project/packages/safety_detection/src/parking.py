@@ -38,17 +38,22 @@ class Parking(DTROS):
         # vehicle control
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
+        #-----------------------------------------------------------------------
+        # PARKING VARIABLES
         # tag detection
-        self.draw_atag_toggle = True
+        self.at_detector = dt_apriltags.Detector()
+        self.parking_tag = None
         self.is_ToI = False
         self.ToI_area = -1
-        self.parking_tag = 47
-        self.at_detector = dt_apriltags.Detector()
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
 
-        # course control
+        self.fixed_maneuvers = {47:(0.400, 1),     58:(0.400, -1),      # 4 ID=47     2 ID=58
+                                13:(0.225, 1),     44:(0.225, -1)}      # 3 ID=13     1 ID=44
+
         self.is_start = True
         self.lost_tag = False
+
+        #-----------------------------------------------------------------------
 
         # camera matrix and distortion coefficients from intrinsic.yaml file
         self.cam_matrix = np.array([
@@ -253,8 +258,17 @@ class Parking(DTROS):
 
 
     def parking(self):
+        if rospy.has_param('p_parking_slot'):
+            if int(rospy.get_param('p_parking_spot')) in self.fixed_maneuvers:   
+                rospy.log(f"Setting park spot")
+                self.parking_tag = int(rospy.get_param('p_parking_spot'))
+        else:
+            rospy.log(f"Parking spot parameter not found or is an invalid value. Using default (13)")
+            self.parking_tag = 13
+
         rate_int = 10
         rate = rospy.Rate(rate_int)
+
         while not rospy.is_shutdown():
             clean_image = self.camera_image.copy()
             # undistort camera image
@@ -262,6 +276,13 @@ class Parking(DTROS):
             draw_image = clean_image.copy()
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
+            if self.is_start:
+                self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
+                self.pause(0.5)
+                self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
+                self.pause(0.5)
+
+            """
             if self.is_start:
                 if self.parking_tag == 47 or self.parking_tag == 58:
                     self.drive_straight(0.4)
@@ -280,6 +301,8 @@ class Parking(DTROS):
                     rospy.log(f"[PARKING.PY] Invalid Parking Tag")
                 self.pause(0.5)
                 self.is_start = False
+            """
+
 
             """
             count = 0
