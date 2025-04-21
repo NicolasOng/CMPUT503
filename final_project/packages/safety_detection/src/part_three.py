@@ -59,7 +59,7 @@ class Pedestrians(DTROS):
 
         # Publisher for wheel commands
         self.vel_pub = rospy.Publisher(
-            f'/{self._vehicle_name}/car_cmd_switch_node/cmd',
+            f'/{self.vehicle_name}/car_cmd_switch_node/cmd',
             Twist2DStamped,
             queue_size=1
         )
