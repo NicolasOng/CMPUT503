@@ -67,7 +67,7 @@ class PartOne(DTROS):
         self.red_stop = 0
         # TODO: fine-tune these distance/rotational velocity pairs
                               # right tuning:        # straight   # left turning    
-        self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.60, math.pi * 0.27, 0.23)]  # right turn (wide lane)
+        self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.70, math.pi * 0.27, 0.23)]  # right turn (wide lane)
                              # left tuning(good):        # straight   # right turning
         self.path_two = [(0.60, math.pi * 0.27, 0.23), (0.60, 0, 0.23), (0.5, -math.pi * 1.2, 0.23)]  # left turn (narrow lane)
         self.path = self.path_one
