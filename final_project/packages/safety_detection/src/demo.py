@@ -30,6 +30,9 @@ class Demo(DTROS):
         #self.part_four_service("")
         #rospy.sleep(2)
 
+        rospy.on_shutdown()
+
+
     def on_shutdown(self):
         # on shutdown
         pass

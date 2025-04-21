@@ -45,30 +45,8 @@ class Pedestrians(DTROS):
         self.duckiebot_area = 0
         self.duckiebot_topic = rospy.Subscriber(f"/{self.vehicle_name}/duckiebot_area", String, self.duckiebot_callback)
 
-
-
-
         self.blue_count = 0
-        #-----------------------------------------------------------------------------------------------------
 
-        # Vars for stopped bot maneuver
-        self.manuvering = False
-        self.manuver_state = 0
-        # Once again, terrible way to approximate time
-        self.state_time = 0
-
-        # Publisher for wheel commands
-        self.vel_pub = rospy.Publisher(
-            f'/{self.vehicle_name}/car_cmd_switch_node/cmd',
-            Twist2DStamped,
-            queue_size=1
-        )
-        
-        # Robot parameters
-        self.wheel_base = 0.05          # Distance between wheels in meters
-        self.wheel_radius = 0.0318      # Wheel radius in meters
-
-        #-----------------------------------------------------------------------------------------------------
 
     def part_three_request(self, req):
         # req.data = String
@@ -145,138 +123,6 @@ class Pedestrians(DTROS):
         rotational = radians/s
         '''
         self.car_cmd.publish(Twist2DStamped(v=linear, omega=rotational))
-
-
-
-
-
-
-#------------------------------------------------------------------------------------------------------
-
-
-    def publish_velocity(self, v, omega):
-        msg = Twist2DStamped()
-        msg.v = v
-        msg.omega = omega
-        self.vel_pub.publish(msg)
-
-        
-    def stop(self, duration):
-        self.publish_velocity(0, 0)
-        rospy.sleep(duration)
-
-        
-    def move_straight(self, distance, speed=0.3):
-        duration = abs(distance / speed)
-        start_time = rospy.get_time()
-        
-        while (rospy.get_time() - start_time) < duration:
-            self.publish_velocity(speed, 0)
-            rospy.sleep(0.1)
-            
-        self.stop(0.5)
-
-        
-    def turn_right(self, speed=0.3, omega=-2.0):
-        duration = (math.pi/2) / abs(omega)
-        start_time = rospy.get_time()
-
-        while (rospy.get_time() - start_time) < duration:
-            self.publish_velocity(speed, omega)
-            rospy.sleep(0.1)
-            
-        self.stop(0.5)
-        
-
-    def turn_left(self, speed=0.3, omega=2.0):
-        duration = (math.pi/2) / abs(omega)
-        start_time = rospy.get_time()
-        
-        while (rospy.get_time() - start_time) < duration:
-            self.publish_velocity(speed, omega)
-            rospy.sleep(0.1)
-            
-        self.stop(0.5)
-
-
-    def manuver_around_bot(self):
-        self.state_time += 1
-        turn_angle = 10
-        turn_time = 12
-        straight_time = 50
-        if self.state_time < 5:
-            return 0, 0
-
-        # wait for 1 second
-        if self.manuver_state == 0:
-            if self.state_time > 25:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0
-            twist = 0
-        # turn to face other lane
-        elif self.manuver_state == 1:
-            if self.state_time > turn_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = -0.25
-            twist = turn_angle
-        # drive into other lane 
-        elif self.manuver_state == 2:
-            if self.state_time > straight_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0.25
-            twist = 0
-        # turn to drive past other bot
-        elif self.manuver_state == 3:
-            if self.state_time > turn_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0.25
-            twist = -turn_angle
-        # drive past other bot
-        elif self.manuver_state == 4:
-            if self.state_time > straight_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0.25
-            twist = 0
-        # turn back to face proper lane
-        elif self.manuver_state == 5:
-            if self.state_time > turn_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0.25
-            twist = -turn_angle
-        # drive into proper lane
-        elif self.manuver_state == 6:
-            if self.state_time > straight_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0.25
-            twist = 0
-        # turn to face proper direction
-        elif self.manuver_state == 7:
-            if self.state_time > turn_time:
-                self.manuver_state += 1
-                self.state_time = 0
-            vel = 0.25
-            twist = turn_angle
-        # end manuver
-        else:
-            self.manuvering = False
-            self.state_time = 0
-            self.manuver_state = 0
-            vel = 0.2
-            twist = 0
-        
-        return vel, twist
-
-
-#------------------------------------------------------------------------------------------------------
-
-
     
     def pedestrians(self):
         rate_int = 10
@@ -304,27 +150,13 @@ class Pedestrians(DTROS):
 
                 self.blue_count += 1
 
-
-            #------------------------------------------------------------------------------
-
             # if the bot is at a duckiebot,
-            if self.duckiebot_area > 40000 or self.manuvering:
+            if self.duckiebot_area > 40000:
                 rospy.loginfo(f'duckiebot detected: {self.duckiebot_area}')
                 # stop the bot
                 self.set_velocities(0, 0)
                 # wait for 1s,
                 rospy.sleep(3)
-
-                self.manuvering = True
-                vel, twist = self.manuver_around_bot()
-
-                self.publish_velocity(vel, twist)
-
-
-            #-------------------------------------------------------------------------------
-
-
-
 
             # if the bot is at a red tape,
             if self.closest_red < 200 and self.blue_count == 2:
