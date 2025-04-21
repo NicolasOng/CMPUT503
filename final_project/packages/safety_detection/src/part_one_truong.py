@@ -67,7 +67,7 @@ class PartOne(DTROS):
         self.red_stop = 0
         # TODO: fine-tune these distance/rotational velocity pairs
                               # right tuning:        # straight   # left turning    
-        self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.70, math.pi * 0.27, 0.23)]  # right turn (wide lane)
+        self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.60, math.pi * 0.35, 0.23)]  # right turn (wide lane)
                              # left tuning(good):        # straight   # right turning
         self.path_two = [(0.60, math.pi * 0.27, 0.23), (0.60, 0, 0.23), (0.5, -math.pi * 1.2, 0.23)]  # left turn (narrow lane)
         self.path = self.path_one
@@ -205,6 +205,8 @@ class PartOne(DTROS):
             #rospy.loginfo(f'xpos: {self.xpos}, ypos: {self.ypos}')
             # if the bot is at a red tape,
             if self.closest_red < 135 and self.red_cooldown == 0:
+                #self.red_stop = 2 # TODO: remove this
+
                 self.red_cooldown = 10
                 rospy.loginfo(f'stopping at red line #{self.red_stop}.')
                 # stop the bot
@@ -235,6 +237,7 @@ class PartOne(DTROS):
                 else:
                     dist, rot_v, speed = self.path[self.red_stop] 
                     self.drive_arc(dist, rot_v, speed)
+                    rospy.loginfo(f'done turning')
                 self.red_stop += 1
             rate.sleep()
             # update the cooldowns
