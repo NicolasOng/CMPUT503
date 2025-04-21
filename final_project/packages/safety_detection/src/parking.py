@@ -38,6 +38,14 @@ class Parking(DTROS):
         # vehicle control
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
+        # camera matrix and distortion coefficients from intrinsic.yaml file
+        self.cam_matrix = np.array([
+            [319.2461317458548, 0.0, 307.91668484581703],
+            [0.0, 317.75077109798957, 255.6638447529814],
+            [0.0, 0.0, 1.0]
+        ])
+        self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
+
         #-----------------------------------------------------------------------
         # PARKING VARIABLES
         # tag detection
@@ -47,22 +55,18 @@ class Parking(DTROS):
         self.ToI_area = -1
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
 
+        self.is_start = True
+
+        # Parking spot IDs and corresponding variables for hard-coded maneuvers
         self.fixed_maneuvers = {47:(0.400, 1),     58:(0.400, -1),      # 4 ID=47     2 ID=58
                                 13:(0.225, 1),     44:(0.225, -1)}      # 3 ID=13     1 ID=44
-
-        self.is_start = True
-        self.lost_tag = False
+        
+        # IMPLEMENT COUNTDOWN FOR WHEN TAG IS LOST: if tag is lost, start countdown
+        # Reset countdown if tag is redetected 
+        # If countdown reaches 0, stop the bot
+        # https://campus-rover.gitbook.io/lab-notebook/fiiva/using-args-params-roslaunch
 
         #-----------------------------------------------------------------------
-
-        # camera matrix and distortion coefficients from intrinsic.yaml file
-        self.cam_matrix = np.array([
-            [319.2461317458548, 0.0, 307.91668484581703],
-            [0.0, 317.75077109798957, 255.6638447529814],
-            [0.0, 0.0, 1.0]
-        ])
-        self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
-
 
     def camera_callback(self, msg):
         # convert compressed image to cv2
@@ -233,6 +237,32 @@ class Parking(DTROS):
             self.ToI_area = ToI_area
 
             _, w = draw_image.shape[:2]
+
+            # ANGLE ERROR TEST -------------------------------------------------------
+            a = abs(ToI.corners[2][1] - ToI.corners[1][1])
+            b = abs(ToI.corners[2][0] - ToI.corners[1][0])
+            theta = math.degrees(math.atan(a/b))
+
+            # Error bar line points:  3--------1---------2
+            # Center point
+            point1 = (w//2, 25)
+            # Outer points                  ↓ length of line 
+            point2 = (point1[0] + math.ceil(20 * math.cos(math.radians(theta))), 
+                      point1[1] + math.ceil(20 * math.sin(math.radians(theta))))
+            point3 = (point1[0] - math.ceil(20 * math.cos(math.radians(theta))), 
+                      point1[1] - math.ceil(20 * math.sin(math.radians(theta))))
+
+            col = (255,100,255)
+            if theta < 20 and theta > -20:
+                col = (0,255,0)
+
+            # Draw theta number
+            draw_image = cv2.putText(draw_image, str(theta), (25,25), cv2.FONT_HERSHEY_SIMPLEX, 0.75, col, 1)
+            # Draw angle line
+            draw_image = cv2.line(draw_image, point1, point2, col, 4)
+            draw_image = cv2.line(draw_image, point1, point3, col, 4)
+            #-----------------------------------------------------------------------------
+
             ToI_offset_error = ToI_center[0] - w//2
             self.ToI_error = ToI_offset_error
 
@@ -274,6 +304,9 @@ class Parking(DTROS):
             # undistort camera image
             clean_image = self.undistort_image(clean_image)
             draw_image = clean_image.copy()
+
+
+
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
             if self.is_start:
@@ -281,6 +314,7 @@ class Parking(DTROS):
                 self.pause(0.5)
                 self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
                 self.pause(0.5)
+                self.is_start = False
 
             """
             if self.is_start:
@@ -320,11 +354,17 @@ class Parking(DTROS):
             v, omega = pid_controller_v_omega(self.alignment_error, parking_pid, rate_int, False)
             self.set_velocities(-v, omega)
             '''
-
+                
             if -1 < self.ToI_area and self.ToI_area < 150:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 break
+            
+            if tag_lost_countdown  <= end_time:
+                print("Haven't seen tag in long enough; stopping.")
+                self.set_velocities(0, 0)
+                break
+
 
             """
             if self.ToI_area > 40000:
@@ -341,22 +381,8 @@ class Parking(DTROS):
                 print("ALIGNED")
                 self.set_velocities(0, 0)
                 break
-            
-            if self.ToI_area > 40000:
-                print("Area threshold reached: ", self.ToI_area)
-                self.set_velocities(0, 0)
-                break
+
             """
-            #*****************************************
-            # TODO
-            # Use assigned parking spot to determine
-            #   - How far forward to move (try to roughly align with parking stall)
-            #   - Which direction to rotate 90 degrees
-            # Use hard coded 90deg rotations and travel straight. 
-            # After executing hardcoded maneuver, use tag-following to complete parking
-            # TUNE PID CONTROLLER FURTHER
-            # EXPERIMENT WITH REVERSE PARKING?
-            #*****************************************
 
             '''
             start_time = rospy.Time.now()
