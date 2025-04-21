@@ -207,6 +207,11 @@ class PartOne(DTROS):
             # if the bot is at a red tape,
             if self.closest_red < 135 and self.red_cooldown == 0:
                 #self.red_stop = 1 # TODO: remove this
+                if self.red_stop == 3:
+                    # this is the last stop
+                    rospy.loginfo(f'last stop, stopping')
+                    self.set_velocities(0, 0)
+                    break
 
                 self.red_cooldown = 10
                 rospy.loginfo(f'stopping at red line #{self.red_stop}.')
@@ -243,11 +248,7 @@ class PartOne(DTROS):
                     dist, rot_v, speed = self.path[self.red_stop] 
                     self.drive_arc(dist, rot_v, speed)
                     rospy.loginfo(f'done turning')
-                if self.red_stop == 2:
-                    # this is the last stop
-                    rospy.loginfo(f'last stop, stopping')
-                    self.set_velocities(0, 0)
-                    break
+
                 self.red_stop += 1
             rate.sleep()
             # update the cooldowns
