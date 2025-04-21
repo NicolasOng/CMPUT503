@@ -68,8 +68,8 @@ class PartOne(DTROS):
         # TODO: fine-tune these distance/rotational velocity pairs
                               # right tuning:        # straight   # left turning    
         self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.60, math.pi * 0.35, 0.23)]  # right turn (wide lane)
-                             # left tuning(good):        # straight   # right turning
-        self.path_two = [(0.60, math.pi * 0.27, 0.23), (0.60, 0, 0.23), (0.5, -math.pi * 1.2, 0.23)]  # left turn (narrow lane)
+                             # left tuning(good):        # straight(good)   # right turning
+        self.path_two = [(0.60, math.pi * 0.25, 0.23), (0.55, -math.pi*0.05, 0.23), (0.5, -math.pi * 1.2, 0.23)]  # left turn (narrow lane)
         self.path = self.path_one
 
         self.path_one_bool = True
@@ -192,6 +192,7 @@ class PartOne(DTROS):
         self.set_velocities(0, 0)
     
     def bot_following(self):
+        rospy.loginfo(f'bot following')
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
@@ -205,7 +206,7 @@ class PartOne(DTROS):
             #rospy.loginfo(f'xpos: {self.xpos}, ypos: {self.ypos}')
             # if the bot is at a red tape,
             if self.closest_red < 135 and self.red_cooldown == 0:
-                #self.red_stop = 2 # TODO: remove this
+                #self.red_stop = 1 # TODO: remove this
 
                 self.red_cooldown = 10
                 rospy.loginfo(f'stopping at red line #{self.red_stop}.')
@@ -215,20 +216,24 @@ class PartOne(DTROS):
                 rospy.sleep(1)
                 # set the path is this is the first stop
                 if self.red_stop == 0:
+
                     if self.bot_turning_left is None:
                         rospy.loginfo(f'bot turning left is None, resetting red cd')
                         self.red_cooldown = 0
                         continue
                     left = self.bot_turning_left
+                    #left = True
                     # set the path the bot will execute based on this.
                     self.path = self.path_one if not left else self.path_two
                     self.path_one_bool = not left
+
                     rospy.loginfo(f'path one bool: {self.path_one_bool} and red stop: {self.red_stop} path chosen {self.bot_turning_left}')
                 elif self.red_stop == 1:  # 2nd red line
                     # this is there both will go straight
                     rospy.loginfo(f'path one bool: {self.path_one_bool} and red stop: {self.red_stop} going straight')
                 elif self.red_stop == 2:  # 3rd red line
                     rospy.loginfo(f'path one bool: {self.path_one_bool} and red stop: {self.red_stop} hard coded turn')
+
 
                 # do the turn
                 if self.red_stop == 1 and self.path_one_bool: # second redstop and we can follow white
