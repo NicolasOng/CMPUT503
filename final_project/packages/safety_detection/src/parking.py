@@ -244,9 +244,10 @@ class Parking(DTROS):
             b = abs(ToI.corners[2][0] - ToI.corners[1][0])
             theta = math.degrees(math.atan(a/b))
 
-            # Center of angle line
+            # Error bar line points:  3--------1---------2
+            # Center point
             point1 = (w//2, 25)
-            # Outer points of angle line    ↓ length of line 
+            # Outer points                  ↓ length of line 
             point2 = (point1[0] + math.ceil(20 * math.cos(math.radians(theta))), 
                       point1[1] + math.ceil(20 * math.sin(math.radians(theta))))
             point3 = (point1[0] - math.ceil(20 * math.cos(math.radians(theta))), 
