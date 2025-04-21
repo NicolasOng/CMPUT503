@@ -2,6 +2,7 @@
 import json
 import math
 import os
+import random
 
 import cv2
 from cv_bridge import CvBridge
@@ -65,6 +66,17 @@ class Parking(DTROS):
         # Reset countdown if tag is redetected 
         # If countdown reaches 0, stop the bot
         # https://campus-rover.gitbook.io/lab-notebook/fiiva/using-args-params-roslaunch
+
+
+
+        #-----------------------------------------------------------------------
+        # LED VARIABLES
+
+        self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
+        red = ColorRGBA(r=255, g=0, b=0, a=255)
+        white = ColorRGBA(r=255, g=255, b=255, a=255)
+        default_list = [white, red, white, red, white]
+        self.default = LEDPattern(rgb_vals=default_list)
 
         #-----------------------------------------------------------------------
 
@@ -306,8 +318,22 @@ class Parking(DTROS):
             draw_image = clean_image.copy()
 
 
+            light_show_s_time = rospy.Time.now()
+            while True:
+                light_show_c_time = rospy.Time.now()
+                if (light_show_c_time - light_show_s_time).to_sec() >= 4:
+                    break
+
+                rand_lights = np.random.randint(3, size=(0, 255))
+                lights_list = [[ColorRGBA(rand_lights[0], rand_lights[1], rand_lights[2], 255)]] * 5
+                self.led_command.publish(LEDPattern(rgb_vals=lights_list))
+                rate.sleep()
+
+            self.led_command.publish(LEDPattern(rgb_vals=self.default_list))
+            break
 
             draw_image = self.perform_tag_detection(clean_image, draw_image)
+
 
             if self.is_start:
                 self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
@@ -359,12 +385,11 @@ class Parking(DTROS):
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 break
-            
-            if tag_lost_countdown  <= end_time:
-                print("Haven't seen tag in long enough; stopping.")
-                self.set_velocities(0, 0)
-                break
 
+            #if tag_lost_countdown <= end_time:
+            #    print("Haven't seen tag in long enough; stopping.")
+            #    self.set_velocities(0, 0)
+            #    break
 
             """
             if self.ToI_area > 40000:
