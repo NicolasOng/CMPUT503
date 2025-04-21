@@ -67,9 +67,9 @@ class PartOne(DTROS):
         self.red_stop = 0
         # TODO: fine-tune these distance/rotational velocity pairs
                               # right tuning:        # straight   # left turning    
-        self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.60, math.pi * 0.27)]  # right turn (wide lane)
+        self.path_one = [(0.5, -math.pi * 1.2, 0.23), None, (0.60, math.pi * 0.27, 0.23)]  # right turn (wide lane)
                              # left tuning(good):        # straight   # right turning
-        self.path_two = [(0.60, math.pi * 0.27), (0.60, 0), (0.5, -math.pi * 1.2, 0.23)]  # left turn (narrow lane)
+        self.path_two = [(0.60, math.pi * 0.27, 0.23), (0.60, 0, 0.23), (0.5, -math.pi * 1.2, 0.23)]  # left turn (narrow lane)
         self.path = self.path_one
 
         self.path_one_bool = True
@@ -233,8 +233,8 @@ class PartOne(DTROS):
                     # just go straight with lane follow white
                     pass
                 else:
-                    dist, rot_v = self.path[self.red_stop] 
-                    self.drive_arc(dist, rot_v)
+                    dist, rot_v, speed = self.path[self.red_stop] 
+                    self.drive_arc(dist, rot_v, speed)
                 self.red_stop += 1
             rate.sleep()
             # update the cooldowns
