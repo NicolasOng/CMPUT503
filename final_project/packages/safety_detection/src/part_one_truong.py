@@ -22,6 +22,9 @@ class PartOne(DTROS):
         super(PartOne, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
+        # service
+        self.service_part_one = rospy.Service(f'/{self.vehicle_name}/part_one', SetString, self.part_one_request)
+
         # odometry topic
         self.ctheta = 0
         self.cpos = 0
@@ -74,8 +77,10 @@ class PartOne(DTROS):
 
         self.path_one_bool = True
 
-
-
+    def part_one_request(self, req):
+        # req.data = String
+        self.bot_following()
+        return SetStringResponse(success=True, message=f"Part One Done!")
 
     def odometry_callback(self, msg):
         '''

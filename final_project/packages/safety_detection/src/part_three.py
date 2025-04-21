@@ -22,6 +22,9 @@ class Pedestrians(DTROS):
         super(Pedestrians, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
+        # service
+        self.service_part_three = rospy.Service(f'/{self.vehicle_name}/part_three', SetString, self.part_three_request)
+
         # lane following
         self.lane_error = None
         self.pid_values = simple_pid
@@ -67,9 +70,10 @@ class Pedestrians(DTROS):
 
         #-----------------------------------------------------------------------------------------------------
 
-
-
-
+    def part_three_request(self, req):
+        # req.data = String
+        self.pedestrians()
+        return SetStringResponse(success=True, message=f"Part Three Done!")
 
     def lane_error_callback(self, msg):
         '''
