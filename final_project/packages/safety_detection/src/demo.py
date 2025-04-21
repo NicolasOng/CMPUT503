@@ -12,11 +12,12 @@ class Demo(DTROS):
         rospy.wait_for_service(f'/{self.vehicle_name}/part_one')
         rospy.wait_for_service(f'/{self.vehicle_name}/part_two')
         rospy.wait_for_service(f'/{self.vehicle_name}/part_three')
-        rospy.wait_for_service(f'/{self.vehicle_name}/part_four')
+        #rospy.wait_for_service(f'/{self.vehicle_name}/part_four')
         self.part_one_service = rospy.ServiceProxy(f'/{self.vehicle_name}/part_one', SetString)
         self.part_two_service = rospy.ServiceProxy(f'/{self.vehicle_name}/part_two', SetString)
         self.part_three_service = rospy.ServiceProxy(f'/{self.vehicle_name}/part_three', SetString)
-        self.part_four_service = rospy.ServiceProxy(f'/{self.vehicle_name}/part_four', SetString)
+        #self.part_four_service = rospy.ServiceProxy(f'/{self.vehicle_name}/part_four', SetString)
+
     
     def demo(self):
         # Call the services in order
@@ -26,8 +27,8 @@ class Demo(DTROS):
         rospy.sleep(2)
         self.part_three_service("")
         rospy.sleep(2)
-        self.part_four_service("")
-        rospy.sleep(2)
+        #self.part_four_service("")
+        #rospy.sleep(2)
 
     def on_shutdown(self):
         # on shutdown
@@ -35,6 +36,6 @@ class Demo(DTROS):
 
 if __name__ == '__main__':
     node = Demo(node_name='demo')
-    rospy.sleep(2)
+    rospy.sleep(5)
     node.demo()
     rospy.spin()

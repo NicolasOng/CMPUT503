@@ -48,7 +48,7 @@ class Pedestrians(DTROS):
 
 
 
-
+        self.blue_count = 0
         #-----------------------------------------------------------------------------------------------------
 
         # Vars for stopped bot maneuver
@@ -302,6 +302,8 @@ class Pedestrians(DTROS):
                 # reset the start time, so time is not counted while waiting for pedestrians
                 start_time = rospy.Time.now()
 
+                self.blue_count += 1
+
 
             #------------------------------------------------------------------------------
 
@@ -325,13 +327,13 @@ class Pedestrians(DTROS):
 
 
             # if the bot is at a red tape,
-            if self.closest_red < 200:
+            if self.closest_red < 200 and self.blue_count == 2:
                 rospy.loginfo(f'detected red line, stopping.')
                 # stop the bot
                 self.set_velocities(0, 0)
                 # wait for 1s,
                 rospy.sleep(3)
-                rospy.loginfo(f'DONE SECTION1')
+                rospy.loginfo(f'DONE SECTION3')
                 break
             rate.sleep()
             # update the cooldowns
@@ -348,6 +350,6 @@ class Pedestrians(DTROS):
 
 if __name__ == '__main__':
     node = Pedestrians(node_name='pedestrians')
-    rospy.sleep(2)
-    node.pedestrians()
+    #rospy.sleep(2)
+    #node.pedestrians()
     rospy.spin()

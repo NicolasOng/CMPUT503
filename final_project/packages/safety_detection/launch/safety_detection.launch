@@ -2,11 +2,15 @@
 
   <group ns="$(arg veh)">
 
-    <param name="p_parking_slot" value='47'/>
+    <param name="p_parking_spot" value='58'/>
 
     <node pkg="safety_detection" type="camera_detection.py" name="camera_detection_node" output="screen"/>
     <node pkg="safety_detection" type="odometry.py" name="odometry_node" output="screen"/>
-    <node pkg="safety_detection" type="vehicle_detection.py" name="detection" output="screen"/>
+    <node pkg="safety_detection" type="part_one_truong.py" name="part_one" output="screen"/>
+    <node pkg="safety_detection" type="part_two.py" name="part_two" output="screen"/>
+    <node pkg="safety_detection" type="part_three.py" name="part_three" output="screen"/>
+    <node pkg="safety_detection" type="demo.py" name="demo" output="screen"/>
+
 
   </group>
 

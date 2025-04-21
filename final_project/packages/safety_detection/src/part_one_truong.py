@@ -163,10 +163,10 @@ class PartOne(DTROS):
         
     def set_leds(self):
         # TODO: set LED if the bot goes from detected to not, or vice versa
-        if self.current_led == "default" and self.bot_error is not None:
+        if self.current_led == "default" and self.duckiebot_area > 5000:
             self.current_led = "all green"
             self.led_command.publish(self.all_green)
-        elif self.current_led == "all green" and self.bot_error is None:
+        elif self.current_led == "all green" and self.duckiebot_area < 5000:
             self.current_led = "default"
             self.led_command.publish(self.default)
         pass
@@ -212,11 +212,11 @@ class PartOne(DTROS):
             # if the bot is at a red tape,
             if self.closest_red < 135 and self.red_cooldown == 0:
                 #self.red_stop = 1 # TODO: remove this
-                if self.red_stop == 3:
-                    # this is the last stop
-                    rospy.loginfo(f'last stop, stopping')
-                    self.set_velocities(0, 0)
-                    break
+                #if self.red_stop == 3:
+                #    # this is the last stop
+                #    rospy.loginfo(f'last stop, stopping')
+                #    self.set_velocities(0, 0)
+                #    break
 
                 self.red_cooldown = 10
                 rospy.loginfo(f'stopping at red line #{self.red_stop}.')
@@ -254,6 +254,13 @@ class PartOne(DTROS):
                     self.drive_arc(dist, rot_v, speed)
                     rospy.loginfo(f'done turning')
 
+
+                if self.red_stop == 2:
+                    rospy.loginfo(f'part one done, stopping.')
+                    self.current_led = "default"
+                    self.led_command.publish(self.default)
+                    break
+
                 self.red_stop += 1
             rate.sleep()
             # update the cooldowns
@@ -270,6 +277,6 @@ class PartOne(DTROS):
 
 if __name__ == '__main__':
     node = PartOne(node_name='partone')
-    rospy.sleep(2)
-    node.bot_following()
+    #rospy.sleep(2)
+    #node.bot_following()
     rospy.spin()

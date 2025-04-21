@@ -161,6 +161,8 @@ class PartTwo(DTROS):
             rospy.loginfo(f'closest red: {self.closest_red}, red cooldown: {self.red_cooldown}')
             # if the bot is at a red tape,
             if self.closest_red < 135 and self.red_cooldown == 0:
+                
+
                 self.red_cooldown = 10
                 rospy.loginfo(f'stopping at red line #{self.red_stop}.')
                 # stop the bot
@@ -188,6 +190,10 @@ class PartTwo(DTROS):
                 dist, rot_v, speed = self.path[self.red_stop] 
                 self.drive_arc(dist, rot_v, speed)
                 self.red_stop += 1
+
+                if self.red_stop == 2:
+                    rospy.loginfo(f"part two done, stopping.")
+                    break
                 start_time = rospy.Time.now()
             rate.sleep()
             # update the cooldowns
@@ -204,6 +210,6 @@ class PartTwo(DTROS):
 
 if __name__ == '__main__':
     node = PartTwo(node_name='parttwo')
-    rospy.sleep(2)
-    node.part_two()
+    #rospy.sleep(2)
+    #node.part_two()
     rospy.spin()
