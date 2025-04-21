@@ -38,6 +38,14 @@ class Parking(DTROS):
         # vehicle control
         self.car_cmd = rospy.Publisher(f"/{self.vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
+        # camera matrix and distortion coefficients from intrinsic.yaml file
+        self.cam_matrix = np.array([
+            [319.2461317458548, 0.0, 307.91668484581703],
+            [0.0, 317.75077109798957, 255.6638447529814],
+            [0.0, 0.0, 1.0]
+        ])
+        self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
+
         #-----------------------------------------------------------------------
         # PARKING VARIABLES
         # tag detection
@@ -59,15 +67,6 @@ class Parking(DTROS):
         # https://campus-rover.gitbook.io/lab-notebook/fiiva/using-args-params-roslaunch
 
         #-----------------------------------------------------------------------
-
-        # camera matrix and distortion coefficients from intrinsic.yaml file
-        self.cam_matrix = np.array([
-            [319.2461317458548, 0.0, 307.91668484581703],
-            [0.0, 317.75077109798957, 255.6638447529814],
-            [0.0, 0.0, 1.0]
-        ])
-        self.dist_coeff = np.array([-0.25706255601943445, 0.045805679651939275, -0.0003584336283982042, -0.0005756902051068707, 0.0])
-
 
     def camera_callback(self, msg):
         # convert compressed image to cv2
@@ -305,6 +304,9 @@ class Parking(DTROS):
             # undistort camera image
             clean_image = self.undistort_image(clean_image)
             draw_image = clean_image.copy()
+
+
+
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
             if self.is_start:
@@ -352,11 +354,17 @@ class Parking(DTROS):
             v, omega = pid_controller_v_omega(self.alignment_error, parking_pid, rate_int, False)
             self.set_velocities(-v, omega)
             '''
-
+                
             if -1 < self.ToI_area and self.ToI_area < 150:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 break
+            
+            if tag_lost_countdown  <= end_time:
+                print("Haven't seen tag in long enough; stopping.")
+                self.set_velocities(0, 0)
+                break
+
 
             """
             if self.ToI_area > 40000:
