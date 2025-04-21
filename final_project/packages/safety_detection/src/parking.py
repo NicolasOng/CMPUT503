@@ -17,7 +17,7 @@ from std_msgs.msg import ColorRGBA, String
 
 from camera_detection import CameraDetectionNode
 from Color import Color
-from pid_controller import parking_pid, pid_controller_v_omega
+from pid_controller import parking_pid, pid_controller_v_omega, parking_align_pid
 from safety_detection.srv import SetString, SetStringResponse
 
 class Parking(DTROS):
@@ -55,18 +55,22 @@ class Parking(DTROS):
         self.is_ToI = False
         self.ToI_area = -1
         self.tag_image_sub = rospy.Publisher(f"/{self.vehicle_name}/tag_image_new", Image, queue_size=1)
+        self.ToI_error = 0
 
         self.is_start = True
 
+        self.is_reverse = -1
+
         # Parking spot IDs and corresponding variables for hard-coded maneuvers
-        self.fixed_maneuvers = {47:(0.400, 1),     58:(0.400, -1),      # 4 ID=47     2 ID=58
+        self.fixed_maneuvers = {47:(0.450, 1),     58:(0.450, -1),      # 4 ID=47     2 ID=58
                                 13:(0.225, 1),     44:(0.225, -1)}      # 3 ID=13     1 ID=44
+        
+        self.fixed_maneuvers_rev = {58:(0.450, -1),     47:(0.450, 1),      # 4 ID=58     2 ID=47
+                                    44:(0.225, -1),     13:(0.225, 1)}      # 3 ID=44     1 ID=13
         
         # IMPLEMENT COUNTDOWN FOR WHEN TAG IS LOST: if tag is lost, start countdown
         # Reset countdown if tag is redetected 
         # If countdown reaches 0, stop the bot
-        # https://campus-rover.gitbook.io/lab-notebook/fiiva/using-args-params-roslaunch
-
 
 
         #-----------------------------------------------------------------------
@@ -75,8 +79,8 @@ class Parking(DTROS):
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
         red = ColorRGBA(r=255, g=0, b=0, a=255)
         white = ColorRGBA(r=255, g=255, b=255, a=255)
-        default_list = [white, red, white, red, white]
-        self.default = LEDPattern(rgb_vals=default_list)
+        self. default_list = [white, red, white, red, white]
+        self.default = LEDPattern(rgb_vals=self.default_list)
 
         #-----------------------------------------------------------------------
 
@@ -190,20 +194,19 @@ class Parking(DTROS):
 
     # Draws a bounding box and ID on an ApriltTag 
     def draw_atag_features(self, image, points, id, center, error, correction=0, colour=(255, 100, 255)):
-        h, w = image.shape[:2]
+        h, w = image.shape[:2] 
+        
+        if int(error) < 10 and int(error) > -10:
+            colour = (0, 255, 0)
+        
         img = cv2.polylines(image, [points], True, colour, 5)
-        img = cv2.putText(image, error, tuple(center), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 1)
         img = cv2.line(image, ((w//2)+correction, (h//2)), tuple(center), colour, 2)
+        img = cv2.putText(image, error, tuple(center), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 1)
         
         # Image center
-        img = cv2.line(image, (w//2, 0), (w//2, h), (255, 100, 255), 2)
-        img = cv2.circle(image, (w//2, h//2), 3, (255, 100, 255), 3)
+        img = cv2.line(image, (w//2, 0), (w//2, h), colour, 2)
+        img = cv2.circle(image, (w//2, h//2), 3, colour, 3)
 
-        # Rotation correction center
-        img = cv2.line(image, (((w//2)-65), 0), (((w//2)-65), h), (200,45,200), 2)
-        img = cv2.circle(image, ((w//2)-65, (h//2)), 3, (200,45,200), 3)
-    
-        #img = cv2.putText(image, id, (center[0], center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 2)
         return img
     
 
@@ -217,11 +220,8 @@ class Parking(DTROS):
 
         ToI_index = -1
         self.is_ToI = False
-        #self.ToI_area = 0
+        self.ToI_area = 0
         self.ToI_error = 0
-        self.alignment_error = 0
-
-        other_tag_idx = -1
 
         if len(results) == 0:
             self.tag_image_sub.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
@@ -231,8 +231,6 @@ class Parking(DTROS):
                 if r.tag_id == self.parking_tag:
                     ToI_index = idx
                     self.is_ToI = True
-                else:
-                    other_tag_idx = idx
 
         if ToI_index != -1:
             ToI = results[ToI_index]
@@ -250,9 +248,10 @@ class Parking(DTROS):
 
             _, w = draw_image.shape[:2]
 
+            """
             # ANGLE ERROR TEST -------------------------------------------------------
-            a = abs(ToI.corners[2][1] - ToI.corners[1][1])
-            b = abs(ToI.corners[2][0] - ToI.corners[1][0])
+            a = ToI.corners[1][1] - ToI.corners[3][1]
+            b = ToI.corners[1][0] - ToI.corners[3][0]
             theta = math.degrees(math.atan(a/b))
 
             # Error bar line points:  3--------1---------2
@@ -265,21 +264,25 @@ class Parking(DTROS):
                       point1[1] - math.ceil(20 * math.sin(math.radians(theta))))
 
             col = (255,100,255)
-            if theta < 20 and theta > -20:
+            if theta < 1.5 and theta > -1.5:
                 col = (0,255,0)
 
             # Draw theta number
-            draw_image = cv2.putText(draw_image, str(theta), (25,25), cv2.FONT_HERSHEY_SIMPLEX, 0.75, col, 1)
+            draw_image = cv2.putText(draw_image, str(round(theta,2)), (25,25), cv2.FONT_HERSHEY_SIMPLEX, 0.75, col, 1)
             # Draw angle line
             draw_image = cv2.line(draw_image, point1, point2, col, 4)
             draw_image = cv2.line(draw_image, point1, point3, col, 4)
             #-----------------------------------------------------------------------------
+            """
 
             ToI_offset_error = ToI_center[0] - w//2
             self.ToI_error = ToI_offset_error
 
+            print("ToI offset error: ", ToI_offset_error)
+
             draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
 
+        '''
         if other_tag_idx !=-1:
             tag = results[other_tag_idx]
 
@@ -293,20 +296,20 @@ class Parking(DTROS):
             self.alignment_error = tag_offset_error
             
             draw_image = self.draw_atag_features(draw_image, tag_corners, tag_id, tag_center, str(tag_offset_error), correction=-65, colour=(170,15,170))
-
+        '''
         self.tag_image_sub.publish(self.bridge.cv2_to_imgmsg(draw_image, encoding="bgr8"))
 
         return draw_image
 
 
     def parking(self):
-        if rospy.has_param('p_parking_slot'):
+        if rospy.has_param('p_parking_spot'):
             if int(rospy.get_param('p_parking_spot')) in self.fixed_maneuvers:   
-                rospy.log(f"Setting park spot")
+                rospy.loginfo(f"Setting park spot")
                 self.parking_tag = int(rospy.get_param('p_parking_spot'))
         else:
-            rospy.log(f"Parking spot parameter not found or is an invalid value. Using default (13)")
-            self.parking_tag = 13
+            rospy.loginfo(f"Parking spot parameter not found or is an invalid value. Using default (13)")
+            self.parking_tag = 44
 
         rate_int = 10
         rate = rospy.Rate(rate_int)
@@ -317,30 +320,79 @@ class Parking(DTROS):
             clean_image = self.undistort_image(clean_image)
             draw_image = clean_image.copy()
 
-
-            light_show_s_time = rospy.Time.now()
-            while True:
-                light_show_c_time = rospy.Time.now()
-                if (light_show_c_time - light_show_s_time).to_sec() >= 4:
-                    break
-
-                rand_lights = np.random.randint(3, size=(0, 255))
-                lights_list = [[ColorRGBA(rand_lights[0], rand_lights[1], rand_lights[2], 255)]] * 5
-                self.led_command.publish(LEDPattern(rgb_vals=lights_list))
-                rate.sleep()
-
-            self.led_command.publish(LEDPattern(rgb_vals=self.default_list))
-            break
-
+            if not self.is_start:
+                if self.is_reverse:
+                    maneuvers = self.fixed_maneuvers_rev
+                else:
+                    maneuvers = self.fixed_maneuvers
+                print("Driving straight: ", maneuvers[self.parking_tag][0])
+                self.drive_straight(maneuvers[self.parking_tag][0])
+                self.pause(0.5)
+                self.rotate(math.pi/2 * 0.45, math.pi * 5 * maneuvers[self.parking_tag][1])
+                self.pause(0.5)
+                self.is_start = False
+            
             draw_image = self.perform_tag_detection(clean_image, draw_image)
+            v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
+            self.set_velocities(v, omega)
 
+            #v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
+            #self.set_velocities(-v, omega)
 
+            if self.ToI_error > 40000:
+                print("Area threshold reached: ", self.ToI_area)
+                self.set_velocities(0, 0)
+                
+                col1 = 0
+                col2 = 50
+                col3 = 100
+                col4 = 150
+                col5 = 200
+
+                light_show_s_time = rospy.Time.now()
+                rate = rospy.Rate(30)
+                while not rospy.is_shutdown():
+                    light_show_c_time = rospy.Time.now()
+                    if (light_show_c_time - light_show_s_time).to_sec() >= 5:
+                        print("time elapsed. Stopping")
+                        break
+                    
+                    col1 += 5 
+                    if col1 > 255:
+                        col1 = 0
+                    col2 += 5
+                    if col2 > 255:
+                        col2 = 0
+                    col3 += 5
+                    if col3 > 255:
+                        col3 = 0
+                    col4 += 5
+                    if col4 > 255:
+                        col4 = 0
+                    col5 += 5
+                    if col5 > 255:
+                        col5 = 0
+
+                    lights_list = [ColorRGBA(r=col1, g=col2, b=col3, a=255),
+                                ColorRGBA(r=col4, g=col5, b=col1, a=255),
+                                ColorRGBA(r=col2, g=col3, b=col4, a=255),
+                                ColorRGBA(r=col5, g=col1, b=col2, a=255),
+                                ColorRGBA(r=col3, g=col4, b=col5, a=255)]
+                    
+                    self.led_command.publish(LEDPattern(rgb_vals=lights_list))
+                    rate.sleep()
+                rate = rospy.Rate(10)
+                rate.sleep()
+                break
+
+            """
             if self.is_start:
                 self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
                 self.pause(0.5)
                 self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
                 self.pause(0.5)
                 self.is_start = False
+            """
 
             """
             if self.is_start:
@@ -380,11 +432,12 @@ class Parking(DTROS):
             v, omega = pid_controller_v_omega(self.alignment_error, parking_pid, rate_int, False)
             self.set_velocities(-v, omega)
             '''
-                
+            '''
             if -1 < self.ToI_area and self.ToI_area < 150:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 break
+            '''
 
             #if tag_lost_countdown <= end_time:
             #    print("Haven't seen tag in long enough; stopping.")
@@ -427,6 +480,7 @@ class Parking(DTROS):
     def on_shutdown(self):
         # on shutdown,
         rospy.loginfo(f"[PARKING.PY] Terminate")
+        self.led_command.publish(LEDPattern(rgb_vals=self.default_list))
         self.set_velocities(0, 0)
 
 
