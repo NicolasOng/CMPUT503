@@ -222,7 +222,7 @@ class PartOne(DTROS):
                         self.red_cooldown = 0
                         continue
                     left = self.bot_turning_left
-                    #left = True
+                    #left = False
                     # set the path the bot will execute based on this.
                     self.path = self.path_one if not left else self.path_two
                     self.path_one_bool = not left
@@ -243,6 +243,11 @@ class PartOne(DTROS):
                     dist, rot_v, speed = self.path[self.red_stop] 
                     self.drive_arc(dist, rot_v, speed)
                     rospy.loginfo(f'done turning')
+                if self.red_stop == 2:
+                    # this is the last stop
+                    rospy.loginfo(f'last stop, stopping')
+                    self.set_velocities(0, 0)
+                    break
                 self.red_stop += 1
             rate.sleep()
             # update the cooldowns
