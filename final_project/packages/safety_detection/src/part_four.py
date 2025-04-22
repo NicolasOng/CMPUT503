@@ -387,19 +387,24 @@ class Parking(DTROS):
 
             """
 
-            stopReverse = False
+            yellow_sum = 0 
 
             if not self.is_start:
                 cam_h, cam_w = clean_image.shape[:2]
                 clean_image_cropped = clean_image[int(self.cam_h * 0.7):int(self.cam_h * 0.9), int(0):int(self.cam_w)]
                 hsv = cv2.cvtColor(clean_image_cropped, cv2.COLOR_BGR2HSV)
                 mask = cv2.inRange(self.yellow_lower, self.yellow_higher)
-                hasYellow = np.sum(mask)
-                if hasYellow > 10:
-                    print("YELLOW DETECTED")
-                    stopReverse = True
+                yellow_sum = np.sum(mask)
 
-            if self.ToI_area > 35000: #or stopReverse:
+            stopCondition = False
+
+            if self.is_reverse:
+                stopCondition = yellow_sum > 10
+            else:
+                stopCondition = self.ToI_area > 35000
+
+
+            if stopCondition: #self.ToI_area > 35000: #or stopReverse:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 col1 = 0
