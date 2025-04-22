@@ -275,10 +275,19 @@ class Parking(DTROS):
 
             a = ToI.corners[2][1] - ToI.corners[3][1]
             b = ToI.corners[2][0] - ToI.corners[3][0]
-            theta = math.degrees(math.atan(a/b))
+            theta1 = math.degrees(math.atan(a/b))
+            c = ToI.corners[0][1] - ToI.corners[1][1]
+            d = ToI.corners[0][1] - ToI.corners[1][1]
+            theta2 = math.degrees(math.atan(c/d))
 
+            # **********************************************************************
+            # REVERSE PARKING ERROR: GET WHICHEVER IS BIGGEST ANGLE BETWEEN POINTS
+            # TOP AND BOTTOM
             if self.is_reverse:
-                self.ToI_error = theta
+                if theta1 >= theta2:
+                    self.ToI_error = theta1
+                else:
+                    self.ToI_error = theta2
             else:
                 self.ToI_error = ToI_offset_error
 
