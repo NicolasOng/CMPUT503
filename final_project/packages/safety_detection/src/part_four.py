@@ -18,7 +18,7 @@ from safety_detection.srv import SetString, SetStringResponse
 
 from camera_detection import CameraDetectionNode
 from Color import Color
-from pid_controller import parking_pid, pid_controller_v_omega
+from pid_controller import parking_pid, parking_reverse_pid, pid_controller_v_omega
 from safety_detection.srv import SetString, SetStringResponse
 
 class Parking(DTROS):
@@ -58,13 +58,14 @@ class Parking(DTROS):
         self.is_reverse = False
 
         # Parking spot IDs and corresponding variables for hard-coded maneuvers
-        self.fixed_maneuvers = {47:(0.450, 1),     58:(0.450, -1),      # 4 ID=47     2 ID=58
-                                13:(0.225, 1),     44:(0.225, -1)}      # 3 ID=13     1 ID=44
+        self.fixed_maneuvers = {47:(0.500, 1),     58:(0.500, -1),      # 4 ID=47     2 ID=58
+                                13:(0.375, 1),     44:(0.375, -1)}      # 3 ID=13     1 ID=44
 
+        # FOR REVERSE, SET STALL NUMBER BY BELOW POSITIONS (e.g. bottom right stall, set ID=44)
         self.fixed_maneuvers_rev = {58:(0.450, -1),     47:(0.450, 1),      # 4 ID=58     2 ID=47
-                                    44:(0.225, -1),     13:(0.225, 1)}      # 3 ID=44     1 ID=13
+                                    44:(0.375, -1),     13:(0.375, 1)}      # 3 ID=44     1 ID=13
 
-        self.arcs = {47:(0.6, math.pi * 0.35),   58:(0.6, -math.pi * 0.35),
+        self.arcs = {47:(0.5, math.pi * 1.2),   58:(0.5, -math.pi * 1.2),  #0.6, -math.pi * 0.35
                      13:(0.5, math.pi * 1.2),    44:(0.5, -math.pi * 1.2)}
         
         # LEDs
@@ -271,12 +272,15 @@ class Parking(DTROS):
 
             _, w = draw_image.shape[:2]
             ToI_offset_error = ToI_center[0] - w//2
-            #self.ToI_error = ToI_offset_error
 
-            a = ToI.corners[1][1] - ToI.corners[3][1]
-            b = ToI.corners[1][0] - ToI.corners[3][0]
+            a = ToI.corners[2][1] - ToI.corners[3][1]
+            b = ToI.corners[2][0] - ToI.corners[3][0]
             theta = math.degrees(math.atan(a/b))
-            self.ToI_error = theta
+
+            if self.is_reverse:
+                self.ToI_error = theta
+            else:
+                self.ToI_error = ToI_offset_error
 
             draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
 
@@ -294,6 +298,8 @@ class Parking(DTROS):
             rospy.loginfo(f"Parking spot parameter not found or is an invalid value. Using default (13)")
             self.parking_tag = 13
 
+        rospy.loginfo(f"Reversing is: {self.is_reverse}")
+
         rate_int = 10
         rate = rospy.Rate(rate_int)
         while not rospy.is_shutdown():
@@ -302,6 +308,29 @@ class Parking(DTROS):
             clean_image = self.undistort_image(clean_image)
             draw_image = clean_image.copy()
             draw_image = self.perform_tag_detection(clean_image, draw_image)
+
+            if self.is_start:
+                if self.is_reverse:
+                    maneuvers = self.fixed_maneuvers_rev
+                else:
+                    maneuvers = self.fixed_maneuvers
+                
+                self.drive_straight(maneuvers[self.parking_tag][0])
+                self.pause(0.5)
+                self.rotate(math.pi/2 * 0.45, math.pi * 5 * maneuvers[self.parking_tag][1])
+
+                #self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
+                #self.rotate(math.pi/6, math.pi*3)
+
+                self.pause(0.5)
+                self.is_start = False
+
+            if self.is_reverse:
+                v, omega = pid_controller_v_omega(self.ToI_error, parking_reverse_pid, rate_int, False)
+                self.set_velocities(-v, omega)
+            else:
+                v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
+                self.set_velocities(v, omega)
 
             """
             if self.is_start:
@@ -312,34 +341,10 @@ class Parking(DTROS):
                 self.pause(0.5)
                 self.is_start = False
 
-                
-            if self.is_start:
-                self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
-                self.pause(0.5)
-                self.is_start = False
+
             """
 
-            if self.is_start:
-                if self.is_reverse:
-                    maneuvers = self.fixed_maneuvers_rev
-                else:
-                    maneuvers = self.fixed_maneuvers
-                print("Driving straight: ", maneuvers[self.parking_tag][0])
-                self.drive_straight(maneuvers[self.parking_tag][0])
-                self.pause(0.5)
-                self.rotate(math.pi/2 * 0.45, math.pi * 5 * maneuvers[self.parking_tag][1])
-                self.pause(0.5)
-                self.is_start = False
-
-            v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
-            self.set_velocities(-v, omega)
-            
-            '''
-            v, omega = pid_controller_v_omega(self.alignment_error, parking_pid, rate_int, False)
-            self.set_velocities(-v, omega)
-            '''
-
-            if self.ToI_area > 40000:
+            if self.ToI_area > 35000:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
                 col1 = 0
@@ -391,7 +396,7 @@ class Parking(DTROS):
 
     def on_shutdown(self):
         # on shutdown,
-        rospy.loginfo(f"[PARKING.PY] Terminate")
+        self.led_command.publish(LEDPattern(rgb_vals=self.default_list))
         self.set_velocities(0, 0)
 
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import signal
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from safety_detection.srv import SetString
@@ -53,8 +52,8 @@ class Demo(DTROS):
         #rospy.sleep(2)
         #self.part_two_service("")
         #rospy.sleep(2)
-        #self.part_three_service("")
-        #rospy.sleep(2)
+        self.part_three_service("")
+        rospy.sleep(2)
         self.part_four_service("")
         rospy.sleep(2)
         self.shutdown_all_nodes()

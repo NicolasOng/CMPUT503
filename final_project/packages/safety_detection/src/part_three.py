@@ -164,7 +164,8 @@ class Pedestrians(DTROS):
                 rospy.sleep(3)
 
             # if the bot is at a red tape,
-            if self.closest_red < 200 and self.blue_count == 2: #self.closest_red < 200
+            #if self.closest_red < 200 and self.blue_count == 2: 
+            if self.closest_red < 200:
                 rospy.loginfo(f'detected red line, stopping.')
                 # stop the bot
                 self.set_velocities(0, 0)

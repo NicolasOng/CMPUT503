@@ -217,6 +217,7 @@ class PartOne(DTROS):
             # do the bot and lane following
             v, omega = bot_and_lane_controller(self.lane_error, self.bot_error, self.lane_pid_values, bot_following_pid, rate_int, False)
             self.set_velocities(v, omega)
+            print(f"V: {v}, Omega: {omega}")
             self.set_leds()
             #rospy.loginfo(f'lane_error: {self.lane_error}, bot error: {self.bot_error}, v: {v}, omega: {omega}')
             #rospy.loginfo(f'closest red: {self.closest_red}, red cooldown: {self.red_cooldown}')

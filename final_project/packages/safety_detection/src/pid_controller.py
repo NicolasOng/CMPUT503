@@ -36,6 +36,15 @@ parking_pid = {
     "integral": 0
 }
 
+# PID values for parking
+parking_reverse_pid = { 
+    "kp": -0.18,
+    "ki": 0,
+    "kd": 0.00,
+    "previous_error": 0,
+    "integral": 0
+}
+
 def pid_controller(pid, error, dt, reset=False):
     '''
     The method to get PID controls.
@@ -63,7 +72,7 @@ def pid_controller_v_omega(error, pid_values, rate, reset=False):
     if error is not None:
         omega = pid_controller(pid_values, error, dt, reset=reset)
         clamp_value = (math.pi) * 1
-        #omega = max(-clamp_value, min(omega, clamp_value))
+        omega = max(-clamp_value, min(omega, clamp_value))                                  #************************UNCOMMENTED CLAMPING: RECOMMENT IF IT DOESN"T WORK******
     # return the calculated v and omega
     if error is None:
         return 0, 0
