@@ -190,7 +190,7 @@ class Parking(DTROS):
         while not rospy.is_shutdown():
             self.set_velocities(speed, 0)
             cur_meters = self.cpos - starting_cpos
-            print("Distance travelled: ", cur_meters)
+            #print("Distance travelled: ", cur_meters)
             if cur_meters >= distance:
                 print("stopping")
                 break
@@ -326,14 +326,12 @@ class Parking(DTROS):
                 col4 = 150
                 col5 = 200
 
+                cont = True
                 light_show_s_time = rospy.Time.now()
                 rate = rospy.Rate(30)
-                while not rospy.is_shutdown():
+                while cont:
                     light_show_c_time = rospy.Time.now()
-                    if (light_show_c_time - light_show_s_time).to_sec() >= 5:
-                        print("time elapsed. Stopping")
-                        break
-                    
+
                     col1 += 5 
                     if col1 > 255:
                         col1 = 0
@@ -357,6 +355,12 @@ class Parking(DTROS):
                                    ColorRGBA(r=col3, g=col4, b=col5, a=255)]
                     
                     self.led_command.publish(LEDPattern(rgb_vals=lights_list))
+
+                    if (light_show_c_time - light_show_s_time).to_sec() >= 5:
+                        self.led_command.publish(LEDPattern(rgb_vals=self.default_list))
+                        print("time elapsed. Stopping")
+                        cont = False
+                    
                     rate.sleep()
                 rate = rospy.Rate(10)
                 rate.sleep()
