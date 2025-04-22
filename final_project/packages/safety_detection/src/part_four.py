@@ -222,13 +222,17 @@ class Parking(DTROS):
     # Draws a bounding box and ID on an ApriltTag 
     def draw_atag_features(self, image, points, id, center, error, colour=(255, 100, 255)):
         h, w = image.shape[:2]
+
+        if int(error) < 10 and int(error) > -10:
+            colour = (0, 255, 0)
+        
         img = cv2.polylines(image, [points], True, colour, 5)
         img = cv2.putText(image, error, tuple(center), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 1)
         img = cv2.line(image, (w//2, h//2), tuple(center), colour, 2)
         
         # Image center
-        img = cv2.line(image, (w//2, 0), (w//2, h), (255, 100, 255), 2)
-        img = cv2.circle(image, (w//2, h//2), 3, (255, 100, 255), 3)
+        img = cv2.line(image, (w//2, 0), (w//2, h), colour, 2)
+        img = cv2.circle(image, (w//2, h//2), 3, colour, 3)
     
         #img = cv2.putText(image, id, (center[0], center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.75, colour, 2)
         return img
@@ -290,6 +294,29 @@ class Parking(DTROS):
                     self.ToI_error = theta2
             else:
                 self.ToI_error = ToI_offset_error
+
+            '''
+            #************************************************************************
+            # Error bar line points:  3--------1---------2
+            # Center point
+            point1 = (w//2, 25)
+            # Outer points                  ↓ length of line 
+            point2 = (point1[0] + math.ceil(20 * math.cos(math.radians(theta1))), 
+                      point1[1] + math.ceil(20 * math.sin(math.radians(theta1))))
+            point3 = (point1[0] - math.ceil(20 * math.cos(math.radians(theta1))), 
+                      point1[1] - math.ceil(20 * math.sin(math.radians(theta1))))
+
+            col = (255,100,255)
+            if theta1 < 1.5 and theta1 > -1.5:
+                col = (0,255,0)
+
+            # Draw theta number
+            draw_image = cv2.putText(draw_image, str(round(theta1,2)), (25,25), cv2.FONT_HERSHEY_SIMPLEX, 0.75, col, 1)
+            # Draw angle line
+            draw_image = cv2.line(draw_image, point1, point2, col, 4)
+            draw_image = cv2.line(draw_image, point1, point3, col, 4)
+            #************************************************************************
+            '''
 
             draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
 
