@@ -295,7 +295,7 @@ class Parking(DTROS):
             # REVERSE PARKING ERROR: GET WHICHEVER IS BIGGEST ANGLE BETWEEN POINTS
             # TOP AND BOTTOM
             if self.is_reverse:
-                if theta1 >= theta2:
+                if abs(theta1) >= abs(theta2):
                     self.ToI_error = theta1
                 else:
                     self.ToI_error = theta2
