@@ -48,10 +48,10 @@ class Demo(DTROS):
         
     def demo(self):
         # Call the services in order
-        #self.part_one_service("")
-        #rospy.sleep(2)
-        #self.part_two_service("")
-        #rospy.sleep(2)
+        self.part_one_service("")
+        rospy.sleep(2)
+        self.part_two_service("")
+        rospy.sleep(2)
         self.part_three_service("")
         rospy.sleep(2)
         self.part_four_service("")
