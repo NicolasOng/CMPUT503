@@ -64,7 +64,6 @@ class Parking(DTROS):
         self.arcs = {47:(0.6, math.pi * 0.35),   58:(0.6, -math.pi * 0.35),
                      13:(0.5, math.pi * 1.2),    44:(0.5, -math.pi * 1.2)}
         
-
         # LEDs
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
         red = ColorRGBA(r=255, g=0, b=0, a=255)
@@ -296,18 +295,18 @@ class Parking(DTROS):
             draw_image = clean_image.copy()
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
-            #if self.is_start:
-            #    print("Driving straight: ", self.fixed_maneuvers[self.parking_tag][0])
-            #    self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
-            #    self.pause(0.5)
-            #    self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
-            #    self.pause(0.5)
-            #    self.is_start = False
-
             if self.is_start:
-                self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
+                print("Driving straight: ", self.fixed_maneuvers[self.parking_tag][0])
+                self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
+                self.pause(0.5)
+                self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
                 self.pause(0.5)
                 self.is_start = False
+
+            #if self.is_start:
+            #    self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
+            #    self.pause(0.5)
+            #    self.is_start = False
 
             v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
             self.set_velocities(v, omega)
