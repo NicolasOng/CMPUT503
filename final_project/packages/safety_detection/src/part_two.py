@@ -24,6 +24,7 @@ class PartTwo(DTROS):
 
         # service
         self.service_part_two = rospy.Service(f'/{self.vehicle_name}/part_two', SetString, self.part_two_request)
+        self.shutdown_service = rospy.Service(f'/{self.vehicle_name}/part_two_shutdown', SetString, self.shutdown_request)
 
         # odometry topic
         self.ctheta = 0
@@ -53,13 +54,18 @@ class PartTwo(DTROS):
         # right tuning:
         # turn 1: [0.5, 0.5] [-math.pi * 1.1, -math.pi * 1.3]
         # turn 2: [0.6, 0.7] [math.pi * 0.22, math.pi * 0.27] - TOO INCONSISTENT!!! 0.22/0.27 both can be too big/small turns
-        self.path_right = [(0.5, -math.pi * 1.2, 0.23), (0.65, math.pi * 0.25, 0.25)]
+        self.path_right = [(0.5, -math.pi * 1.1, 0.23), (0.65, math.pi * 0.25, 0.23)]
         # left tuning:
         # turn 1: [???, ???] [???, ???]
         # turn 2: [???, -math.pi * 1.2] [???, 0.5]
         self.path_left = [(0.70, math.pi * 0.27, 0.23), (0.4, -math.pi * 1.1, 0.23)]
         self.path = self.path_right
         self.which_path = "right"
+
+    def shutdown_request(self, req):
+        # req.data = String
+        rospy.signal_shutdown("Shut Down Part 2")
+        return SetStringResponse(success=True, message=f"Part Two Done!")
     
     def part_two_request(self, req):
         # req.data = String

@@ -84,6 +84,12 @@ class Parking(DTROS):
 
         #-----------------------------------------------------------------------
 
+
+    def part_four_request(self, req):
+        # req.data = String
+        self.parking()
+        return SetStringResponse(success=True, message=f"Part Four Done!")
+
     def camera_callback(self, msg):
         # convert compressed image to cv2
         cv2_image = self.bridge.compressed_imgmsg_to_cv2(msg)

@@ -24,6 +24,7 @@ class PartOne(DTROS):
 
         # service
         self.service_part_one = rospy.Service(f'/{self.vehicle_name}/part_one', SetString, self.part_one_request)
+        self.shutdown_service = rospy.Service(f'/{self.vehicle_name}/part_one_shutdown', SetString, self.shutdown_request)
 
         # odometry topic
         self.ctheta = 0
@@ -76,7 +77,12 @@ class PartOne(DTROS):
         self.path = self.path_one
 
         self.path_one_bool = True
-
+    
+    def shutdown_request(self, req):
+        # req.data = String
+        rospy.signal_shutdown("Shut Down Part 1")
+        return SetStringResponse(success=True, message=f"Part One Done!")
+    
     def part_one_request(self, req):
         # req.data = String
         self.bot_following()

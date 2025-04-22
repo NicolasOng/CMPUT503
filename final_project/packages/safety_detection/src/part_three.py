@@ -24,6 +24,7 @@ class Pedestrians(DTROS):
 
         # service
         self.service_part_three = rospy.Service(f'/{self.vehicle_name}/part_three', SetString, self.part_three_request)
+        self.shutdown_service = rospy.Service(f'/{self.vehicle_name}/part_three_shutdown', SetString, self.shutdown_request)
 
         # lane following
         self.lane_error = None
@@ -47,6 +48,10 @@ class Pedestrians(DTROS):
 
         self.blue_count = 0
 
+    def shutdown_request(self, req):
+        # req.data = String
+        rospy.signal_shutdown("Shut Down Part 3")
+        return SetStringResponse(success=True, message=f"Part Three Done!")
 
     def part_three_request(self, req):
         # req.data = String
@@ -159,7 +164,7 @@ class Pedestrians(DTROS):
                 rospy.sleep(3)
 
             # if the bot is at a red tape,
-            if self.closest_red < 200 and self.blue_count == 2:
+            if self.closest_red < 200 and self.blue_count == 2: #self.closest_red < 200
                 rospy.loginfo(f'detected red line, stopping.')
                 # stop the bot
                 self.set_velocities(0, 0)

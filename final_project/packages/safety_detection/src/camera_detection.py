@@ -5,6 +5,7 @@ import os
 import rospy
 from duckietown.dtros import DTROS, NodeType
 from sensor_msgs.msg import CompressedImage, Image
+from safety_detection.srv import SetString, SetStringResponse
 from duckietown_msgs.msg import Pose2DStamped, WheelEncoderStamped, WheelsCmdStamped, Twist2DStamped, LEDPattern
 from std_msgs.msg import ColorRGBA, String
 from Color import Color
@@ -19,6 +20,9 @@ class CameraDetectionNode(DTROS):
     def __init__(self, node_name):
         super(CameraDetectionNode, self).__init__(node_name=node_name, node_type=NodeType.PERCEPTION)
         self.vehicle_name = os.environ['VEHICLE_NAME']
+
+        self.shutdown_service = rospy.Service(f'/{self.vehicle_name}/camera_shutdown', SetString, self.shutdown_request)
+
 
         # camera subscriber
         self.camera_image = None
@@ -166,6 +170,11 @@ class CameraDetectionNode(DTROS):
         self.bot_error_deque = deque(maxlen=3)
         self.bot_error_deque.append(0)
         self.bot_turning_threshold = 100
+
+    def shutdown_request(self, req):
+        # req.data = String
+        rospy.signal_shutdown("Shut Down Camera")
+        return SetStringResponse(success=True, message=f"Camera finished!")
     
     def white_line_loc_cb(self, msg):
         m_json = msg.data
@@ -666,8 +675,8 @@ class CameraDetectionNode(DTROS):
             rate.sleep()
             end_time = rospy.Time.now()
             duration = (end_time - start_time).to_sec()
-            rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
-            rospy.loginfo(f"---")
+            #rospy.loginfo(f"Loop duration: {duration:.6f} seconds")
+            #rospy.loginfo(f"---")
 
 
     def on_shutdown(self):

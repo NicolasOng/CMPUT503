@@ -14,6 +14,9 @@ class OdometryNode(DTROS):
         super(OdometryNode, self).__init__(node_name=node_name, node_type=NodeType.GENERIC)
         self.vehicle_name = os.environ['VEHICLE_NAME']
 
+        self.shutdown_service = rospy.Service(f'/{self.vehicle_name}/odometry_shutdown', SetString, self.shutdown_request)
+
+
         # Subscribers
         self.left_encoder = rospy.Subscriber(f'/{self.vehicle_name}/left_wheel_encoder_node/tick', WheelEncoderStamped, self.left_wheel_callback)
         self.right_encoder = rospy.Subscriber(f'/{self.vehicle_name}/right_wheel_encoder_node/tick', WheelEncoderStamped, self.right_wheel_callback)
@@ -44,6 +47,11 @@ class OdometryNode(DTROS):
         self.r_res = -1
         self.l_ticks = -1
         self.r_ticks = -1
+
+    def shutdown_request(self, req):
+        # req.data = String
+        rospy.signal_shutdown("Shut Down Odometry")
+        return SetStringResponse(success=True, message=f"Odometry finished!")
 
     def left_wheel_callback(self, msg):
         self.l_res = msg.resolution
@@ -107,7 +115,7 @@ class OdometryNode(DTROS):
             # log some info and publish to a topic
             #rospy.loginfo(f'left: {dlticks}, right: {drticks}')
             #rospy.loginfo(f'num rots: {self.theta / (math.pi*2):.2f}')
-            rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
+            #rospy.loginfo(f"xpos: {self.xpos:.2f}, ypos: {self.ypos:.2f}, theta: {self.theta:.2f}, cpos: {self.cpos:.2f}, ctheta: {self.ctheta:.2f}")
             odometry_data = {
                 "time": cur_time.to_sec(),
                 "interval": dtime,
