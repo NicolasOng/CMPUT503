@@ -60,6 +60,10 @@ class Parking(DTROS):
         # Parking spot IDs and corresponding variables for hard-coded maneuvers
         self.fixed_maneuvers = {47:(0.450, 1),     58:(0.450, -1),      # 4 ID=47     2 ID=58
                                 13:(0.225, 1),     44:(0.225, -1)}      # 3 ID=13     1 ID=44
+        
+        self.arcs = {47:(0.6, math.pi * 0.35),   58:(0.6, -math.pi * 0.35),
+                     13:(0.5, math.pi * 1.2),    44:(0.5, -math.pi * 1.2)}
+        
 
         # LEDs
         self.led_command = rospy.Publisher(f"/{self.vehicle_name}/led_emitter_node/led_pattern", LEDPattern, queue_size=1)
@@ -194,6 +198,23 @@ class Parking(DTROS):
             rate.sleep()
         self.set_velocities(0, 0)
 
+    def drive_arc(self, distance, theta, speed=0.23):
+        '''
+        theta in radians/s, where -1 is left turn, 1 is right turn
+        0 is straight
+        distance should be positive
+        speed should be in [-1, 1]
+        '''
+        starting_cpos = self.cpos
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.set_velocities(speed, theta)
+            cur_meters = self.cpos - starting_cpos
+            if cur_meters >= distance:
+                break
+            rate.sleep()
+        self.set_velocities(0, 0)
+
 
     # Draws a bounding box and ID on an ApriltTag 
     def draw_atag_features(self, image, points, id, center, error, colour=(255, 100, 255)):
@@ -259,9 +280,9 @@ class Parking(DTROS):
 
     def parking(self):
         if rospy.has_param('p_parking_spot'):
-            #if int(rospy.get_param('p_parking_spot')) in self.fixed_maneuvers:   
-            #    rospy.loginfo(f"Setting park spot")
-            self.parking_tag = int(rospy.get_param('p_parking_spot'))
+            if int(rospy.get_param('p_parking_spot')) in self.fixed_maneuvers:   
+                rospy.loginfo(f"Setting park spot")
+                self.parking_tag = int(rospy.get_param('p_parking_spot'))
         else:
             rospy.loginfo(f"Parking spot parameter not found or is an invalid value. Using default (13)")
             self.parking_tag = 13
@@ -275,11 +296,16 @@ class Parking(DTROS):
             draw_image = clean_image.copy()
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
+            #if self.is_start:
+            #    print("Driving straight: ", self.fixed_maneuvers[self.parking_tag][0])
+            #    self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
+            #    self.pause(0.5)
+            #    self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
+            #    self.pause(0.5)
+            #    self.is_start = False
+
             if self.is_start:
-                print("Driving straight: ", self.fixed_maneuvers[self.parking_tag][0])
-                self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
-                self.pause(0.5)
-                self.rotate(math.pi/2 * 0.45, math.pi * 5 * self.fixed_maneuvers[self.parking_tag][1])
+                self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
                 self.pause(0.5)
                 self.is_start = False
 
@@ -295,7 +321,6 @@ class Parking(DTROS):
             if self.ToI_area > 40000:
                 print("Area threshold reached: ", self.ToI_area)
                 self.set_velocities(0, 0)
-                """
                 col1 = 0
                 col2 = 50
                 col3 = 100
@@ -327,70 +352,17 @@ class Parking(DTROS):
                         col5 = 0
 
                     lights_list = [ColorRGBA(r=col1, g=col2, b=col3, a=255),
-                                ColorRGBA(r=col4, g=col5, b=col1, a=255),
-                                ColorRGBA(r=col2, g=col3, b=col4, a=255),
-                                ColorRGBA(r=col5, g=col1, b=col2, a=255),
-                                ColorRGBA(r=col3, g=col4, b=col5, a=255)]
+                                   ColorRGBA(r=col4, g=col5, b=col1, a=255),
+                                   ColorRGBA(r=col2, g=col3, b=col4, a=255),
+                                   ColorRGBA(r=col5, g=col1, b=col2, a=255),
+                                   ColorRGBA(r=col3, g=col4, b=col5, a=255)]
                     
                     self.led_command.publish(LEDPattern(rgb_vals=lights_list))
                     rate.sleep()
                 rate = rospy.Rate(10)
                 rate.sleep()
-                """
 
                 break
-
-            """
-            if self.ToI_area > 40000:
-                print("Area threshold reached: ", self.ToI_area)
-                self.set_velocities(0, 0)
-                break
-                
-            if -1 < self.ToI_area and self.ToI_area < 150:
-                print("Area threshold reached: ", self.ToI_area)
-                self.set_velocities(0, 0)
-                break
-
-            
-            if np.abs(self.ToI_error) > 50:
-                self.rotate(0.1, -0.5)
-                self.pause(0.5)
-
-            if np.abs(self.ToI_error) < 50:
-                print("ALIGNED")
-                self.set_velocities(0, 0)
-                break
-            
-            if self.ToI_area > 40000:
-                print("Area threshold reached: ", self.ToI_area)
-                self.set_velocities(0, 0)
-                break
-            """
-            #*****************************************
-            # TODO
-            # Use assigned parking spot to determine
-            #   - How far forward to move (try to roughly align with parking stall)
-            #   - Which direction to rotate 90 degrees
-            # Use hard coded 90deg rotations and travel straight. 
-            # After executing hardcoded maneuver, use tag-following to complete parking
-            # TUNE PID CONTROLLER FURTHER
-            # EXPERIMENT WITH REVERSE PARKING?
-            #*****************************************
-
-            '''
-            start_time = rospy.Time.now()
-
-            # do the lane following
-            v, omega = pid_controller_v_omega(self.lane_error, simple_pid, rate_int, False)
-            self.set_velocities(v, omega)
-
-            rate.sleep()
-            # update the cooldowns
-            end_time = rospy.Time.now()
-            dt = (end_time - start_time).to_sec()
-            rospy.loginfo(f"Loop duration: {dt:.6f} seconds")
-            rospy.loginfo(f"---")
-            '''
 
     def on_shutdown(self):
         # on shutdown,
