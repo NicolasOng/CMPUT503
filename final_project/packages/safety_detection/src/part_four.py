@@ -55,12 +55,15 @@ class Parking(DTROS):
 
         # course control
         self.is_start = True
-        self.lost_tag = False
+        self.is_reverse = False
 
         # Parking spot IDs and corresponding variables for hard-coded maneuvers
         self.fixed_maneuvers = {47:(0.450, 1),     58:(0.450, -1),      # 4 ID=47     2 ID=58
                                 13:(0.225, 1),     44:(0.225, -1)}      # 3 ID=13     1 ID=44
-        
+
+        self.fixed_maneuvers_rev = {58:(0.450, -1),     47:(0.450, 1),      # 4 ID=58     2 ID=47
+                                    44:(0.225, -1),     13:(0.225, 1)}      # 3 ID=44     1 ID=13
+
         self.arcs = {47:(0.6, math.pi * 0.35),   58:(0.6, -math.pi * 0.35),
                      13:(0.5, math.pi * 1.2),    44:(0.5, -math.pi * 1.2)}
         
@@ -268,7 +271,12 @@ class Parking(DTROS):
 
             _, w = draw_image.shape[:2]
             ToI_offset_error = ToI_center[0] - w//2
-            self.ToI_error = ToI_offset_error
+            #self.ToI_error = ToI_offset_error
+
+            a = ToI.corners[1][1] - ToI.corners[3][1]
+            b = ToI.corners[1][0] - ToI.corners[3][0]
+            theta = math.degrees(math.atan(a/b))
+            self.ToI_error = theta
 
             draw_image = self.draw_atag_features(draw_image, ToI_corners, ToI_id, ToI_center, str(ToI_offset_error))
 
@@ -295,6 +303,7 @@ class Parking(DTROS):
             draw_image = clean_image.copy()
             draw_image = self.perform_tag_detection(clean_image, draw_image)
 
+            """
             if self.is_start:
                 print("Driving straight: ", self.fixed_maneuvers[self.parking_tag][0])
                 self.drive_straight(self.fixed_maneuvers[self.parking_tag][0])
@@ -303,14 +312,27 @@ class Parking(DTROS):
                 self.pause(0.5)
                 self.is_start = False
 
-            #if self.is_start:
-            #    self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
-            #    self.pause(0.5)
-            #    self.is_start = False
+                
+            if self.is_start:
+                self.drive_arc(self.arcs[self.parking_tag][0], self.arcs[self.parking_tag][0])
+                self.pause(0.5)
+                self.is_start = False
+            """
+
+            if self.is_start:
+                if self.is_reverse:
+                    maneuvers = self.fixed_maneuvers_rev
+                else:
+                    maneuvers = self.fixed_maneuvers
+                print("Driving straight: ", maneuvers[self.parking_tag][0])
+                self.drive_straight(maneuvers[self.parking_tag][0])
+                self.pause(0.5)
+                self.rotate(math.pi/2 * 0.45, math.pi * 5 * maneuvers[self.parking_tag][1])
+                self.pause(0.5)
+                self.is_start = False
 
             v, omega = pid_controller_v_omega(self.ToI_error, parking_pid, rate_int, False)
-            self.set_velocities(v, omega)
-            rospy.loginfo(f"Error : {self.ToI_error}, velocity: {v}, omega: {omega}")
+            self.set_velocities(-v, omega)
             
             '''
             v, omega = pid_controller_v_omega(self.alignment_error, parking_pid, rate_int, False)
