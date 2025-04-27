@@ -263,7 +263,7 @@ def best_fit_line_rotated_filtered(color, image, degree=1, div_coeffs=None, abov
     x_threshold = 400
     points = points[points[:, 0] < x_threshold]
     # draw that threshold line
-    image = draw_vertical_line(image, x_threshold, color)
+    #image = draw_vertical_line(image, x_threshold, color)
     #points = filter_points_in_circle(points, (ground_h / 2 + 50, ground_w / 2 + 100), 400)
     #print(points)
     # can also use the yellow line as a filter for the white line,
@@ -320,7 +320,7 @@ def plot_errors_rotated(coeff_target, coeff_measured, image):
     '''
     image = rotate_image(image)
     # get x-values for the bottom half of the image
-    x_values = np.linspace(0, 400, 100)
+    x_values = np.linspace(25, 75, 25)
     # get y-values for both lines
     y_target = np.polyval(coeff_target, x_values)
     y_measured = np.polyval(coeff_measured, x_values)
@@ -378,24 +378,50 @@ def project_bounding_box_to_ground(bounding_box):
     new_points = cv2.perspectiveTransform(points.reshape(-1, 1, 2), homography_to_ground)
     return new_points.reshape(-1, 2)
 
+def plot_lines_and_errors(image, line1, line2):
+    image = plot_errors_rotated(line1, line2, image)
+    image = plot_best_fit_line_rotated(line2, image, Color.BLUE)
+    image = plot_best_fit_line_rotated(line1, image, Color.GREEN)
+    return image
+
 if __name__ == "__main__":
-    degree = 2
-    image = cv2.imread("camera/image03.png")
+    degree = 1
+    yellow_on_left = False
+    image = cv2.imread("camera/image01.png")
     oh, ow = image.shape[:2]
     image = undistort_image(image)
-    #image = project_image_to_ground(image)
-    '''
+    image = project_image_to_ground(image)
+    #'''
     image, yellow_line = best_fit_line_rotated_filtered(Color.YELLOW, image, degree=degree)
-    image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=True)
+    #'''
+    image, white_line = best_fit_line_rotated_filtered(Color.WHITE, image, degree=degree, div_coeffs=yellow_line, above=yellow_on_left)
     measured_line = (np.array(yellow_line) + np.array(white_line)) / 2
-    image = plot_best_fit_line_rotated(measured_line, image, Color.RED)
+    #'''
     target_line = [0.0753, ground_w / 2] # gotten by projecting two points of the vertical in the original image to the ground, then finding its line. something like that.
     #target_line = [0, 625]
     if degree == 2:
         target_line = [0, 0.0753, ground_w / 2]
         #target_line = [0, 0, 625]
-    image = plot_best_fit_line_rotated(target_line, image, Color.GREEN)
-    image = plot_errors_rotated(target_line, measured_line, image)
+    # target line for MAE calculation
+    target_line = [0.0753, ground_w / 2]
+    target_line_left = [0.0753, ground_w / 2 - 150]
+    target_line_right = [0.0753, ground_w / 2 + 150]
+    target_line = [0.0753, ground_w / 2]
+    if degree == 2:
+        target_line = [0, 0.0753, ground_w / 2]
+        target_line_left = [0.0753, ground_w / 2 - 150]
+        target_line_right = [0, 0.0753, ground_w / 2 + 150]
+    yellow_target_line = target_line_right
+    white_target_line = target_line_left
+    if yellow_on_left:
+        yellow_target_line = target_line_left
+        white_target_line = target_line_right
+
+    #image = plot_lines_and_errors(image, target_line, measured_line)
+
+    image = plot_lines_and_errors(image, yellow_target_line, yellow_line)
+    image = plot_lines_and_errors(image, white_target_line, white_line)
+
     image = project_image_from_ground(image)
     #draw_vertical_line(image, int(cam_w/2), Color.BLUE)
     '''

@@ -92,7 +92,11 @@ if __name__ == "__main__":
 
     mask = get_color_mask_custom(lower, upper, image)
 
-    result_img = cv2.bitwise_and(image, image, mask=mask)
+    #result_img = cv2.bitwise_and(image, image, mask=mask)
+
+    # where mask is nonzero, set the pixel to pure red (BGR: 0,0,255)
+    image[mask > 0] = (0, 0, 255)
+    result_img = image
 
     #image = perform_ground_color_detection(image.copy(), image)
 

@@ -38,6 +38,31 @@ vr = 50
 red_lower = np.array([max(0, red_hsv[0] - hr), max(0, red_hsv[1] - sr), max(0, red_hsv[2] - vr)])
 red_upper = np.array([min(179, red_hsv[0] + hr), min(255, red_hsv[1] + sr), min(255, red_hsv[2] + vr)])
 
+def convert_hsv(hue, saturation, value):
+    '''
+    from custom:
+    Hue: [0, 355]
+    Saturation: [0, 100]
+    Value: [0, 100]
+    to opencv:
+    Hue: [0,179]
+    Saturation: [0,255]
+    Value: [0,255]
+    '''
+    # Convert hue from [0, 355] to [0, 179]
+    ocv_hue = int((hue / 355) * 179)
+
+    # Convert saturation and value from [0, 100] to [0, 255]
+    ocv_saturation = int((saturation / 100) * 255)
+    ocv_value = int((value / 100) * 255)
+
+    return [ocv_hue, ocv_saturation, ocv_value]
+
+red_lower = np.array(convert_hsv(0, 50, 50), np.uint8)
+red_upper = np.array(convert_hsv(40, 100, 100), np.uint8)
+
+print(red_lower, red_upper)
+
 # Wrap-around case (near 0)
 red_lower_1 = np.array([0, max(0, red_hsv[1] - sr), max(0, red_hsv[2] - vr)])
 red_upper_1 = np.array([red_hsv[0] + hr, min(255, red_hsv[1] + sr), min(255, red_hsv[2] + vr)])
@@ -280,8 +305,8 @@ hsv_color = cv2.cvtColor(np.array([[[255, 111, 111]]], dtype=np.uint8), cv2.COLO
 print(hsv_color) #0 144 255
 #cv2.circle(image, (50, 50), 100, bgr_color.tolist(), -1)
 
-cv2.line(image, tuple(polygon_points_white[0]), tuple(polygon_points_white[3]), (0, 255, 0), 2)  # Left line
-cv2.line(image, tuple(polygon_points_white[1]), tuple(polygon_points_white[2]), (0, 255, 0), 2)  # Right line
+#cv2.line(image, tuple(polygon_points_white[0]), tuple(polygon_points_white[3]), (0, 255, 0), 2)  # Left line
+#cv2.line(image, tuple(polygon_points_white[1]), tuple(polygon_points_white[2]), (0, 255, 0), 2)  # Right line
 
 cv2.imshow("PNG Image", image)
 cv2.waitKey(0)
